@@ -121,24 +121,30 @@ flowchart TD
 ## 📁 4. Cấu Trúc Thư Mục (Project Structure)
 
 ```text
-src/
-├── main/
-│   ├── java/com/devteria/identityservice/
-│   │   ├── configuration/     # Cấu hình Spring Security, JWT, Cloudinary, Auditing, AppInit
-│   │   ├── constant/          # Các hằng số (PredefinedRole,...)
-│   │   ├── controller/        # REST Controllers (16 controllers)
-│   │   ├── dto/               # Data Transfer Objects (request, response)
-│   │   ├── entity/            # JPA Entities (User, Song, Album, Artist, Playlist, Similarity,...)
-│   │   ├── enums/             # Enum types (Status, SongType, ReportStatus,...)
-│   │   ├── exception/         # Xử lý lỗi toàn cục (GlobalExceptionHandler, ErrorCode, AppException)
-│   │   ├── mapper/            # MapStruct mappers (UserMapper, RoleMapper, PagingMapper,...)
-│   │   ├── repository/        # Spring Data JPA Repositories
-│   │   ├── service/           # Business logic & Recommendation Engine Services
-│   │   └── validator/         # Custom Validation (DobConstraint,...)
-│   └── resources/
-│       ├── application.yaml       # Cấu hình môi trường dev
-│       └── application-prod.yaml  # Cấu hình môi trường production
-└── test/                          # Unit test & Integration test
+identity-service-main/
+└── identity-service-main/
+    ├── src/
+    │   ├── main/
+    │   │   ├── java/com/devteria/identityservice/
+    │   │   │   ├── configuration/     # Cấu hình Spring Security, JWT, Cloudinary, Auditing, AppInit
+    │   │   │   ├── constant/          # Các hằng số (PredefinedRole,...)
+    │   │   │   ├── controller/        # REST Controllers (16 controllers)
+    │   │   │   ├── dto/               # Data Transfer Objects (request, response)
+    │   │   │   ├── entity/            # JPA Entities (User, Song, Album, Artist, Playlist, Similarity,...)
+    │   │   │   ├── enums/             # Enum types (Status, SongType, ReportStatus,...)
+    │   │   │   ├── exception/         # Xử lý lỗi toàn cục (GlobalExceptionHandler, ErrorCode, AppException)
+    │   │   │   ├── mapper/            # MapStruct mappers (UserMapper, RoleMapper, PagingMapper,...)
+    │   │   │   ├── repository/        # Spring Data JPA Repositories
+    │   │   │   ├── service/           # Business logic & Recommendation Engine Services
+    │   │   │   └── validator/         # Custom Validation (DobConstraint,...)
+    │   │   └── resources/
+    │   │       ├── application.yaml       # Cấu hình môi trường dev
+    │   │       └── application-prod.yaml  # Cấu hình môi trường production
+    │   └── test/                          # Unit test & Integration test
+    ├── Dockerfile                         # Dockerfile đóng gói ứng dụng
+    ├── Identity Service.postman_collection.json # Bộ sưu tập kiểm thử API qua Postman
+    ├── mvnw / mvnw.cmd                    # Maven wrapper
+    └── pom.xml                            # Quản lý thư viện Maven
 ```
 
 ---
@@ -190,11 +196,19 @@ jwt:
   refreshable-duration: 36000 # Thời gian cho phép Refresh Token: 10 giờ (giây)
 ```
 
+> [!NOTE]
+> Thông tin API Cloudinary được cấu hình trong `CloudinaryConfig.java`. Bạn có thể thay đổi bằng thông tin tài khoản Cloudinary của bạn nếu cần lưu trữ riêng.
+
 ---
 
 ## 🚀 7. Hướng Dẫn Khởi Chạy (How to Run)
 
 ### Cách 1: Chạy trực tiếp từ dòng lệnh (Maven Wrapper)
+
+Di chuyển vào thư mục dự án chứa mã nguồn:
+```bash
+cd identity-service-main
+```
 
 Chạy ứng dụng:
 - **Windows**:
@@ -424,7 +438,7 @@ Mọi phản hồi từ hệ thống đều được gói trong cấu trúc đ�
 ## 📮 11. Kiểm Thử Với Postman (Postman Collection)
 
 File Postman Collection được đính kèm sẵn trong thư mục dự án:
-`Identity Service.postman_collection.json`
+`identity-service-main/Identity Service.postman_collection.json`
 
 ### Các bước kiểm thử:
 1. Mở Postman $\rightarrow$ Chọn **Import** $\rightarrow$ Kéo thả file `Identity Service.postman_collection.json`.
