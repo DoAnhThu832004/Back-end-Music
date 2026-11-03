@@ -6,5 +6,6 @@ public enum TargetType {
     ARTIST,
     PLAYLIST,
     SYSTEM,
+    COMMENT,
     OTHER
 }

@@ -6,6 +6,8 @@ import java.util.List;
 import com.devteria.identityservice.dto.response.PageResponse;
 import jakarta.validation.Valid;
 
+import org.springframework.security.access.prepost.PreAuthorize;
+import com.devteria.identityservice.dto.request.UserRolesUpdateRequest;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.bind.annotation.*;
 
@@ -74,6 +76,19 @@ public class UserController {
                 .message("this is update user")
                 .build();
     }
+
+    @Transactional
+    @PreAuthorize("hasRole('ADMIN')")
+    @PutMapping("/{userId}/roles")
+    ApiResponse<UserResponse> updateUserRoles(
+            @PathVariable String userId,
+            @RequestBody @Valid UserRolesUpdateRequest request
+    ) {
+        return ApiResponse.<UserResponse>builder()
+                .result(userService.updateUserRoles(userId, request))
+                .message("User roles updated successfully")
+                .build();
+    }
     @Transactional
     @PostMapping(value = "/{userId}/upload")
     ApiResponse<UserResponse> uploadProfileImage(
@@ -96,7 +111,7 @@ public class UserController {
     }
 
     /**
-     * [ADMIN] Chặn tài khoản người dùng.
+     * [ADMIN] ChĂ¡ÂºÂ·n tÄ‚Â i khoĂ¡ÂºÂ£n ngĂ†Â°Ă¡Â»Âi dÄ‚Â¹ng.
      * PATCH /users/{userId}/block
      */
     @PatchMapping("/{userId}/block")
@@ -108,7 +123,7 @@ public class UserController {
     }
 
     /**
-     * [ADMIN] Huỷ chặn tài khoản người dùng.
+     * [ADMIN] HuĂ¡Â»Â· chĂ¡ÂºÂ·n tÄ‚Â i khoĂ¡ÂºÂ£n ngĂ†Â°Ă¡Â»Âi dÄ‚Â¹ng.
      * PATCH /users/{userId}/unblock
      */
     @PatchMapping("/{userId}/unblock")

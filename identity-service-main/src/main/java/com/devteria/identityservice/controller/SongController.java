@@ -13,6 +13,7 @@ import com.devteria.identityservice.service.SongService;
 import jakarta.validation.Valid;
 import org.springframework.core.io.Resource;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.web.multipart.MultipartFile;
 
@@ -103,12 +104,12 @@ public class SongController {
             throw new AppException(ErrorCode.UPLOAD_FAILED);
         }
     }
-    // Endpoint ghi nhận lượt nghe, gọi khi người dùng bắt đầu phát nhạc
+    // Endpoint ghi nháº­n lÆ°á»£t nghe, gá»i khi ngÆ°á»i dĂ¹ng báº¯t Ä‘áº§u phĂ¡t nháº¡c
     @PostMapping("/{songId}/play")
     public ApiResponse<String> incrementPlayCount(@PathVariable("songId") String id) {
         songService.incrementPlayCount(id);
         return ApiResponse.<String>builder()
-                .result("Lượt nghe đã được cập nhật thành công")
+                .result("LÆ°á»£t nghe Ä‘Ă£ Ä‘Æ°á»£c cáº­p nháº­t thĂ nh cĂ´ng")
                 .build();
     }
 
@@ -139,6 +140,21 @@ public class SongController {
     public ApiResponse<List<SongResponse>> getRecentlyPlayedSongs() {
         return ApiResponse.<List<SongResponse>>builder()
                 .result(songService.getRecentlyPlayedSongs())
+                .build();
+    }
+
+    /**
+     * [ADMIN] Kích hoạt AI phân tích và làm giàu mô tả, thể loại bài hát.
+     * POST /songs/{id}/ai-enrich
+     */
+    @PreAuthorize("hasRole('ADMIN')")
+    @PostMapping("/{id}/ai-enrich")
+    public ApiResponse<SongResponse> enrichSongMetadata(
+            @PathVariable("id") String songId,
+            @RequestParam(value = "overwrite", defaultValue = "false") boolean overwrite) {
+        return ApiResponse.<SongResponse>builder()
+                .result(songService.enrichSongMetadata(songId, overwrite))
+                .message("AI metadata enrichment completed")
                 .build();
     }
 }

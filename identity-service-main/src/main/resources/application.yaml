@@ -17,7 +17,20 @@ spring:
     multipart:
       max-file-size: 20MB        # Tối đa 1 file
       max-request-size: 40MB
+
+cloudinary:
+  cloud-name: ${CLOUDINARY_CLOUD_NAME:dfgwogria}
+  api-key: ${CLOUDINARY_API_KEY:715615316369621}
+  api-secret: ${CLOUDINARY_API_SECRET:XwZD7_v2VXHlBFmwMzWAZMlUHqE}
+
 jwt:
-  signerKey: "1TjXchw5FloESb63Kc+DFhTARvpWL4jUGCwfGWxuG5SIf/1y/LgJxHnMqaF6A/ij"
-  valid-duration: 3600 # in second , hiệu lực của jwt
-  refreshable-duration: 36000 # in seconds , khoảng thời gian cho phép refresh
+  signerKey: ${JWT_SIGNER_KEY:1TjXchw5FloESb63Kc+DFhTARvpWL4jUGCwfGWxuG5SIf/1y/LgJxHnMqaF6A/ij}
+  valid-duration: 3600 # in seconds, hiệu lực của jwt
+  refreshable-duration: 36000 # in seconds, khoảng thời gian cho phép refresh
+
+gemini:
+  api-key: ${GEMINI_API_KEY:}
+  model: ${GEMINI_MODEL:gemini-3.5-flash-lite}
+  base-url: https://generativelanguage.googleapis.com/v1beta
+  connect-timeout-ms: 5000
+  read-timeout-ms: 15000

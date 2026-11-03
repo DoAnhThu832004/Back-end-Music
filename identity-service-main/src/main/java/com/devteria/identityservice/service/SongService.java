@@ -54,8 +54,9 @@ public class SongService {
     private final DownloadedSongRepository downloadedSongRepository;
     private final GenreRepository genreRepository;
     private final com.devteria.identityservice.repository.UserInteractionRepository userInteractionRepository;
+    private final AiSongEnrichmentService aiSongEnrichmentService;
 
-    public SongService(SongRepository songRepository, YearService yearService, Cloudinary cloudinary, FavoriteRepository favoriteRepository, UserRepository userRepository, DownloadedSongRepository downloadedSongRepository, GenreRepository genreRepository, com.devteria.identityservice.repository.UserInteractionRepository userInteractionRepository) {
+    public SongService(SongRepository songRepository, YearService yearService, Cloudinary cloudinary, FavoriteRepository favoriteRepository, UserRepository userRepository, DownloadedSongRepository downloadedSongRepository, GenreRepository genreRepository, com.devteria.identityservice.repository.UserInteractionRepository userInteractionRepository, AiSongEnrichmentService aiSongEnrichmentService) {
         this.songRepository = songRepository;
         this.yearService = yearService;
         this.cloudinary = cloudinary;
@@ -64,6 +65,7 @@ public class SongService {
         this.downloadedSongRepository = downloadedSongRepository;
         this.genreRepository = genreRepository;
         this.userInteractionRepository = userInteractionRepository;
+        this.aiSongEnrichmentService = aiSongEnrichmentService;
     }
 
     @Transactional
@@ -212,14 +214,16 @@ public class SongService {
                 ObjectUtils.asMap("folder", "music_app/images"));
         Map uploadAudio = cloudinary.uploader().upload(audio.getBytes(),
                 ObjectUtils.asMap(
-                        "resource_type", "video", // Cloudinary yêu cầu kiểu này cho file audio/mp3
+                        "resource_type", "video", // Cloudinary yĂªu cáº§u kiá»ƒu nĂ y cho file audio/mp3
                         "folder", "music_app/audios"
                 ));
         song.setImageUrl(uploadImage.get("secure_url").toString());
         song.setAudioUrl(uploadAudio.get("secure_url").toString());
         song.setStatus(Status.PUBLISHED);
 
-        return songRepository.save(song);
+        Song savedSong = songRepository.save(song);
+        aiSongEnrichmentService.enrichSongMetadataAsync(songId);
+        return savedSong;
 
     }
     @Transactional
@@ -244,7 +248,7 @@ public class SongService {
                 })
                 .collect(Collectors.toList());
     }
-    // Tiêm DownloadedSongRepository vào Constructor
+    // TiĂªm DownloadedSongRepository vĂ o Constructor
     public boolean isSongDownloadedByCurrentUser(String songId) {
         User user = getCurrentUser();
         if (user == null) return false;
@@ -254,7 +258,7 @@ public class SongService {
 
         return downloadedSongRepository.existsByUserAndSong(user, song);
     }
-    // Cập nhật hàm downloadSong cũ
+    // Cáº­p nháº­t hĂ m downloadSong cÅ©
     @Transactional
     public ResponseEntity<Resource> downloadSong(String id) {
         Song song = songRepository.findById(id)
@@ -262,7 +266,7 @@ public class SongService {
 
         User currentUser = getCurrentUser();
         if (currentUser != null) {
-            // KIỂM TRA: Nếu chưa tải thì mới lưu vào DB
+            // KIá»‚M TRA: Náº¿u chÆ°a táº£i thĂ¬ má»›i lÆ°u vĂ o DB
             if (!downloadedSongRepository.existsByUserAndSong(currentUser, song)) {
                 DownloadedSong download = new DownloadedSong();
                 download.setUser(currentUser);
@@ -270,7 +274,7 @@ public class SongService {
                 download.setDownloadedAt(LocalDateTime.now());
                 downloadedSongRepository.save(download);
             }
-            // Nếu đã tải rồi thì bỏ qua bước save, chỉ tiến hành trả về file nhạc bên dưới
+            // Náº¿u Ä‘Ă£ táº£i rá»“i thĂ¬ bá» qua bÆ°á»›c save, chá»‰ tiáº¿n hĂ nh tráº£ vá» file nháº¡c bĂªn dÆ°á»›i
         }
 
         try {
@@ -288,7 +292,7 @@ public class SongService {
         }
     }
 
-    // Hàm lấy danh sách bài hát đã tải
+    // HĂ m láº¥y danh sĂ¡ch bĂ i hĂ¡t Ä‘Ă£ táº£i
     public List<SongResponse> getDownloadedSongs() {
         User user = getCurrentUser();
         if (user == null) return Collections.emptyList();
@@ -337,14 +341,14 @@ public class SongService {
         response.setFavorite(false);
         response.setPlayCount(song.getPlayCount() != null ? song.getPlayCount() : 0L);
         if (song.getArtists() != null && !song.getArtists().isEmpty()) {
-            // Cách 1: Sử dụng Stream API (Hiện đại, an toàn)
+            // CĂ¡ch 1: Sá»­ dá»¥ng Stream API (Hiá»‡n Ä‘áº¡i, an toĂ n)
             Artist firstArtist = song.getArtists().stream().findFirst().orElse(null);
 
             if (firstArtist != null) {
                 response.setArtistName(firstArtist.getName());
             }
 
-            // Cách 2 (Truyền thống - Dùng Iterator):
+            // CĂ¡ch 2 (Truyá»n thá»‘ng - DĂ¹ng Iterator):
             // response.setArtistName(song.getArtists().iterator().next().getName());
         }
         if (song.getGenres() != null && !song.getGenres().isEmpty()) {
@@ -377,5 +381,9 @@ public class SongService {
         User user = getCurrentUser();
         if (user == null) return false;
         return favoriteRepository.existsByUserAndSong(user, song);
+    }
+
+    public SongResponse enrichSongMetadata(String songId, boolean overwrite) {
+        return aiSongEnrichmentService.enrichSongMetadata(songId, overwrite);
     }
 }
