@@ -29,6 +29,7 @@ public class AiSongEnrichmentService {
     SongRepository songRepository;
     GenreRepository genreRepository;
     GeminiClientService geminiClientService;
+    SongEmbeddingService songEmbeddingService;
 
     /**
      * Cháº¡y ngáº§m (@Async) trong ThreadPool riĂªng (aiTaskExecutor).
@@ -154,7 +155,13 @@ public class AiSongEnrichmentService {
         }
 
         Song savedSong = songRepository.save(song);
-        log.info("LĂ m giĂ u AI hoĂ n táº¥t cho bĂ i hĂ¡t [{}]: MĂ´ táº£ Ä‘Ă£ cáº­p nháº­t, sá»‘ thá»ƒ loáº¡i: {}",
+        try {
+            songEmbeddingService.syncSongEmbedding(savedSong);
+        } catch (Exception e) {
+            log.warn("Không thể đồng bộ SongEmbedding sau khi làm giàu: {}", e.getMessage());
+        }
+
+        log.info("Làm giàu AI hoàn tất cho bài hát [{}]: Mô tả đã cập nhật, số thể loại: {}",
                 savedSong.getName(), savedSong.getGenres() != null ? savedSong.getGenres().size() : 0);
 
         return SongService.toSongResponse(savedSong);

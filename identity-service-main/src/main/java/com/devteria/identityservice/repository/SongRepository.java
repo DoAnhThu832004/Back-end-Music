@@ -21,9 +21,20 @@ public interface SongRepository extends JpaRepository<Song, String> {
 
     /**
      * Tải nhiều bài hát theo danh sách ID trong một query duy nhất.
-     * Dùng trong bước Response của luồng Online để hydrate song metadata.
      */
     List<Song> findByIdIn(List<String> ids);
+
+    /**
+     * Tải nhiều bài hát theo danh sách ID trong một query duy nhất kèm quan hệ artists và genres.
+     */
+    @EntityGraph(attributePaths = {"artists", "genres"})
+    List<Song> findWithDetailsByIdIn(List<String> ids);
+
+    /**
+     * Tải danh sách bài hát có lượt nghe cao nhất (Trending) với phân trang động kèm quan hệ artists và genres.
+     */
+    @EntityGraph(attributePaths = {"artists", "genres"})
+    Page<Song> findAllByOrderByPlayCountDesc(Pageable pageable);
 
     /**
      * Tải bài hát kèm sẵn quan hệ artists và genres để tránh LazyInitializationException trong luồng Async AI.

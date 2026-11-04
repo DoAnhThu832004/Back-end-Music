@@ -25,7 +25,8 @@ public class IdentityServiceApplication {
         File[] candidateFiles = new File[]{
                 new File(".env"),
                 new File("identity-service-main/.env"),
-                new File("../.env")
+                new File("../.env"),
+                new File("D:/SpringBoot/identity-service-main/identity-service-main/.env")
         };
 
         for (File envFile : candidateFiles) {

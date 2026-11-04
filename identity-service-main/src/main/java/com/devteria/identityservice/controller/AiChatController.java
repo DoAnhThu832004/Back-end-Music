@@ -37,7 +37,7 @@ public class AiChatController {
     private final AiChatGuardService aiChatGuardService;
     private final ConversationMemoryManager conversationMemoryManager;
     private final AiPersonaPromptFactory promptFactory;
-    private final GeminiClientService geminiClientService;
+    private final AiAgentOrchestrator aiAgentOrchestrator;
     private final AiModerationService aiModerationService;
     private final AiChatSessionService aiChatSessionService;
 
@@ -49,7 +49,7 @@ public class AiChatController {
             AiChatGuardService aiChatGuardService,
             ConversationMemoryManager conversationMemoryManager,
             AiPersonaPromptFactory promptFactory,
-            GeminiClientService geminiClientService,
+            AiAgentOrchestrator aiAgentOrchestrator,
             AiModerationService aiModerationService,
             AiChatSessionService aiChatSessionService) {
         this.chatSessionRepository = chatSessionRepository;
@@ -59,7 +59,7 @@ public class AiChatController {
         this.aiChatGuardService = aiChatGuardService;
         this.conversationMemoryManager = conversationMemoryManager;
         this.promptFactory = promptFactory;
-        this.geminiClientService = geminiClientService;
+        this.aiAgentOrchestrator = aiAgentOrchestrator;
         this.aiModerationService = aiModerationService;
         this.aiChatSessionService = aiChatSessionService;
     }
@@ -138,14 +138,16 @@ public class AiChatController {
         });
 
         // 11. Mở luồng stream Non-blocking với Gemini
-        geminiClientService.streamGenerateContent(
+        aiAgentOrchestrator.orchestrateTurn(
+                currentUser.getUsername(),
+                request.message(),
                 contents,
                 systemInstruction,
                 emitter,
-                streamResult -> {
+                turnResult -> {
                     try {
                         // Nếu stream lỗi ngay từ đầu và không có nội dung, không lưu tin nhắn rỗng vào DB
-                        if (streamResult.status() == MessageStatus.FAILED && (streamResult.fullContent() == null || streamResult.fullContent().isBlank())) {
+                        if (turnResult.status() == MessageStatus.FAILED && (turnResult.fullText() == null || turnResult.fullText().isBlank())) {
                             log.warn("[AI Chat] Luồng AI lỗi trước khi sinh nội dung cho session {}, không lưu tin nhắn rỗng vào DB.", session.getId());
                             return;
                         }
@@ -154,14 +156,14 @@ public class AiChatController {
                         ChatMessage aiMessage = ChatMessage.builder()
                                 .session(session)
                                 .sender(MessageSender.AI)
-                                .status(streamResult.status())
-                                .content(streamResult.fullContent())
+                                .status(turnResult.status())
+                                .content(turnResult.fullText())
                                 .currentSong(currentSong)
-                                .tokenCount(streamResult.totalTokens())
+                                .tokenCount(turnResult.totalTokens())
                                 .build();
                         chatMessageRepository.save(aiMessage);
                         log.info("[AI Chat] Đã lưu tin nhắn AI cho session {}: status={}, tokens={}",
-                                session.getId(), streamResult.status(), streamResult.totalTokens());
+                                session.getId(), turnResult.status(), turnResult.totalTokens());
                     } catch (Exception e) {
                         log.error("[AI Chat] Lỗi khi lưu câu trả lời AI vào DB: {}", e.getMessage(), e);
                     } finally {

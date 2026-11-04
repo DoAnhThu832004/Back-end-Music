@@ -60,7 +60,7 @@ class AiChatControllerTest {
     private AiPersonaPromptFactory promptFactory;
 
     @Mock
-    private GeminiClientService geminiClientService;
+    private AiAgentOrchestrator aiAgentOrchestrator;
 
     @Mock
     private AiModerationService aiModerationService;
@@ -138,7 +138,7 @@ class AiChatControllerTest {
         // Kiểm tra kiểm duyệt async
         verify(aiModerationService, times(1)).moderateUserChatAsync(eq("Xin chào"), eq(sampleUser), any());
         // Kiểm tra mở luồng stream với Gemini
-        verify(geminiClientService, times(1)).streamGenerateContent(any(), any(), eq(emitter), any());
+        verify(aiAgentOrchestrator, times(1)).orchestrateTurn(eq("testuser"), eq("Xin chào"), any(), any(), eq(emitter), any());
     }
 
     @Test
@@ -165,7 +165,7 @@ class AiChatControllerTest {
                 .hasFieldOrPropertyWithValue("errorCode", ErrorCode.UNAUTHORIZED);
 
         verify(chatMessageRepository, never()).save(any());
-        verify(geminiClientService, never()).streamGenerateContent(any(), any(), any(), any());
+        verify(aiAgentOrchestrator, never()).orchestrateTurn(any(), any(), any(), any(), any(), any());
     }
 
     @Test
