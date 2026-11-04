@@ -4,6 +4,7 @@ import com.devteria.identityservice.dto.response.PlayerActionDto;
 import com.devteria.identityservice.dto.response.PlaylistProposalDto;
 import com.devteria.identityservice.dto.response.SongCardDto;
 import com.devteria.identityservice.enums.MessageStatus;
+import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import lombok.extern.slf4j.Slf4j;
@@ -219,18 +220,14 @@ public class AiAgentOrchestrator {
                         // 3. Có một hoặc nhiều Function Calls (song song)
                         log.info("[Agent Orchestrator] Nhận được {} function call(s) từ Gemini", functionCallParts.size());
 
-                        // Thêm turn phản hồi của Model vào contents
+                        // Thêm turn phản hồi nguyên bản của Model vào contents (bảo toàn thoughtSignature, id, functionCall)
                         Map<String, Object> modelTurnBlock = new LinkedHashMap<>();
                         modelTurnBlock.put("role", "model");
 
-                        List<Map<String, Object>> modelPartsList = new ArrayList<>();
-                        for (JsonNode fc : functionCallParts) {
-                            Map<String, Object> fcMap = objectMapper.convertValue(fc, Map.class);
-                            modelPartsList.add(Map.of("functionCall", fcMap));
-                        }
-                        if (textPartsBuilder.length() > 0) {
-                            modelPartsList.add(Map.of("text", textPartsBuilder.toString()));
-                        }
+                        List<Map<String, Object>> modelPartsList = objectMapper.convertValue(
+                                partsNode,
+                                new TypeReference<List<Map<String, Object>>>() {}
+                        );
                         modelTurnBlock.put("parts", modelPartsList);
                         contents.add(modelTurnBlock);
 
@@ -275,9 +272,9 @@ public class AiAgentOrchestrator {
                             functionResponseParts.add(frWrapper);
                         }
 
-                        // Thêm turn kết quả tool (role: "function") vào contents cho iteration sau
+                        // Thêm turn kết quả tool (role: "user" theo chuẩn Gemini v1beta) vào contents cho iteration sau
                         Map<String, Object> functionTurnBlock = new LinkedHashMap<>();
-                        functionTurnBlock.put("role", "function");
+                        functionTurnBlock.put("role", "user");
                         functionTurnBlock.put("parts", functionResponseParts);
                         contents.add(functionTurnBlock);
                     }
