@@ -7,7 +7,7 @@ import com.devteria.identityservice.entity.SongEmbedding;
 import com.devteria.identityservice.repository.SongEmbeddingRepository;
 import com.devteria.identityservice.repository.SongRepository;
 import com.devteria.identityservice.util.VietnameseTextNormalizer;
-import com.fasterxml.jackson.core.type.TypeReference;
+import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import lombok.extern.slf4j.Slf4j;
@@ -17,8 +17,10 @@ import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.context.event.ApplicationReadyEvent;
 import org.springframework.context.event.EventListener;
 import org.springframework.http.MediaType;
+import org.springframework.scheduling.annotation.Async;
 import org.springframework.stereotype.Service;
-import org.springframework.transaction.annotation.Transactional;
+import org.springframework.web.client.HttpClientErrorException;
+import org.springframework.web.client.HttpServerErrorException;
 import org.springframework.web.client.RestClient;
 
 import java.util.*;
@@ -48,6 +50,8 @@ public class SongEmbeddingService {
     // Bộ đệm In-Memory cực nhanh (ConcurrentHashMap) lưu trữ vector và metadata chuẩn hóa
     private final ConcurrentMap<String, CachedSongMetadata> cache = new ConcurrentHashMap<>();
 
+    private record SongSeedPayload(String songId, String name, String searchText, String normalizedTitle) {}
+
     public record CachedSongMetadata(
             String songId,
             String normalizedTitle,
@@ -75,37 +79,86 @@ public class SongEmbeddingService {
     }
 
     /**
-     * Tải toàn bộ dữ liệu vector nhúng từ cơ sở dữ liệu lên bộ nhớ đệm In-Memory khi ứng dụng khởi động.
+     * Chuyển thực thể Song đã tải đủ quan hệ sang DTO thuần không phụ thuộc Hibernate Session.
      */
+    private SongSeedPayload toPayload(Song song) {
+        String artistNames = (song.getArtists() != null && !song.getArtists().isEmpty())
+                ? song.getArtists().stream().map(Artist::getName).collect(Collectors.joining(", "))
+                : "Chưa rõ";
+
+        String genreNames = (song.getGenres() != null && !song.getGenres().isEmpty())
+                ? song.getGenres().stream().map(Genre::getName).collect(Collectors.joining(", "))
+                : "Chưa rõ";
+
+        String description = (song.getDescription() != null && !song.getDescription().isBlank())
+                ? song.getDescription()
+                : "";
+
+        String searchText = String.format("Tên bài hát: %s | Nghệ sĩ: %s | Thể loại: %s | Mô tả: %s",
+                song.getName(), artistNames, genreNames, description).trim();
+
+        return new SongSeedPayload(
+                song.getId(),
+                song.getName(),
+                searchText,
+                VietnameseTextNormalizer.normalize(song.getName())
+        );
+    }
+
+    /**
+     * Tải toàn bộ dữ liệu vector nhúng từ cơ sở dữ liệu lên bộ nhớ đệm In-Memory khi ứng dụng khởi động.
+     * Chạy ngầm (@Async) để không làm chậm quá trình khởi động của ứng dụng Spring Boot.
+     */
+    @Async("aiTaskExecutor")
     @EventListener(ApplicationReadyEvent.class)
     public void initializeEmbeddingsIfEmpty() {
         log.info("[Hybrid Search] Khởi động nạp bộ nhớ đệm SongEmbedding...");
         loadCacheFromDatabase();
 
+        List<SongSeedPayload> pending;
         try {
-            List<Song> allSongs = songRepository.findAll();
-            int newlySeeded = 0;
+            pending = songRepository.findAllWithDetails().stream()
+                    .filter(s -> !cache.containsKey(s.getId()))
+                    .map(this::toPayload)
+                    .toList();
+        } catch (Exception e) {
+            log.warn("[Hybrid Search] Không đọc được danh sách bài hát để seed embedding: {}", e.getMessage());
+            return;
+        }
 
-            for (Song song : allSongs) {
-                if (!cache.containsKey(song.getId())) {
-                    try {
-                        syncSongEmbedding(song);
-                        newlySeeded++;
-                        // Giữ nhịp gọi API để tránh vượt hạn mức rate limit
-                        Thread.sleep(150);
-                    } catch (Exception e) {
-                        log.warn("[Hybrid Search] Không thể tạo embedding cho bài hát {} ({}): {}",
-                                song.getName(), song.getId(), e.getMessage());
-                    }
+        if (pending.isEmpty()) {
+            log.info("[Hybrid Search] Toàn bộ bài hát đã có embedding trong cache. Bỏ qua seeding.");
+            return;
+        }
+
+        log.info("[Hybrid Search] Phát hiện {} bài hát chưa có embedding. Bắt đầu batch seeding ngầm...", pending.size());
+
+        int seeded = 0;
+        int consecutiveFailures = 0;
+
+        for (SongSeedPayload p : pending) {
+            try {
+                float[] vector = embedWithRetry(p.searchText());
+                saveEmbedding(p, vector);
+                seeded++;
+                consecutiveFailures = 0;
+                // Giữ nhịp gọi API để tránh vượt hạn mức rate limit (Gemini Free Tier thường là 15 RPM)
+                Thread.sleep(700);
+            } catch (InterruptedException ie) {
+                Thread.currentThread().interrupt();
+                log.warn("[Hybrid Search] Tác vụ batch seeding bị ngắt luồng.");
+                return;
+            } catch (Exception e) {
+                log.warn("[Hybrid Search] Lỗi seed bài {} ({}): {}", p.name(), p.songId(), e.getMessage());
+                consecutiveFailures++;
+                if (consecutiveFailures >= 3) {
+                    log.error("[Hybrid Search] Lỗi liên tiếp 3 lần, dừng seeding để tránh cạn quota. Vui lòng kiểm tra API key/quota.");
+                    break;
                 }
             }
-
-            if (newlySeeded > 0) {
-                log.info("[Hybrid Search] Đã hoàn thành batch seeding cho {} bài hát mới.", newlySeeded);
-            }
-        } catch (Exception e) {
-            log.warn("[Hybrid Search] Quá trình batch seeding gặp ngoại lệ (Fail-Safe): {}", e.getMessage());
         }
+
+        log.info("[Hybrid Search] Hoàn thành batch seeding: {}/{} bài thành công.", seeded, pending.size());
     }
 
     /**
@@ -117,6 +170,10 @@ public class SongEmbeddingService {
             for (SongEmbedding se : allEmbeddings) {
                 try {
                     float[] vector = objectMapper.readValue(se.getEmbeddingJson(), float[].class);
+                    // Bỏ qua bản ghi có vector rỗng (nếu trước đây bị lưu rác)
+                    if (vector == null || vector.length == 0) {
+                        continue;
+                    }
                     cache.put(se.getSongId(), new CachedSongMetadata(
                             se.getSongId(),
                             se.getNormalizedTitle(),
@@ -127,61 +184,123 @@ public class SongEmbeddingService {
                     log.warn("[Hybrid Search] Lỗi giải mã vector cho songId {}: {}", se.getSongId(), e.getMessage());
                 }
             }
-            log.info("[Hybrid Search] Đã nạp {} vector bài hát vào bộ đệm RAM.", cache.size());
+            log.info("[Hybrid Search] Đã nạp {} vector bài hát hợp lệ vào bộ đệm RAM.", cache.size());
         } catch (Exception e) {
             log.warn("[Hybrid Search] Lỗi nạp cache từ database: {}", e.getMessage());
         }
     }
 
     /**
-     * Gọi Gemini API sinh vector nhúng 768 chiều cho văn bản đầu vào.
+     * Gọi Gemini API sinh vector nhúng có cơ chế Exponential Backoff khi dính 429 Too Many Requests hoặc 5xx.
+     */
+    private float[] embedWithRetry(String text) throws Exception {
+        long wait = 2000;
+        for (int attempt = 1; ; attempt++) {
+            try {
+                return requestEmbedding(text);
+            } catch (HttpClientErrorException.TooManyRequests | HttpServerErrorException e) {
+                if (attempt >= 4) {
+                    throw e;
+                }
+                log.warn("[Hybrid Search] Gặp lỗi rate limit/server ({}), thử lại lần {} sau {}ms...",
+                        e.getStatusCode(), attempt, wait);
+                Thread.sleep(wait);
+                wait *= 2;
+            }
+        }
+    }
+
+    /**
+     * Lưu vector vào DB và cache RAM. Kiểm tra nghiêm ngặt không cho phép lưu vector rỗng.
+     */
+    private SongEmbedding saveEmbedding(SongSeedPayload p, float[] vector) throws JsonProcessingException {
+        if (vector == null || vector.length == 0) {
+            throw new IllegalStateException("Vector rỗng, từ chối lưu để bảo vệ tính toàn vẹn của cache");
+        }
+
+        SongEmbedding embedding = songEmbeddingRepository.findBySongId(p.songId())
+                .orElseGet(() -> SongEmbedding.builder()
+                        .songId(p.songId())
+                        .song(songRepository.getReferenceById(p.songId()))
+                        .build());
+
+        embedding.setSearchText(p.searchText());
+        embedding.setNormalizedTitle(p.normalizedTitle());
+        embedding.setEmbeddingJson(objectMapper.writeValueAsString(vector));
+
+        SongEmbedding saved = songEmbeddingRepository.save(embedding);
+
+        cache.put(p.songId(), new CachedSongMetadata(
+                p.songId(),
+                p.normalizedTitle(),
+                VietnameseTextNormalizer.normalize(p.searchText()),
+                vector
+        ));
+
+        log.info("[Hybrid Search] Đã đồng bộ embedding cho bài hát: {} (ID: {}, Vector size: {})",
+                p.name(), p.songId(), vector.length);
+
+        return saved;
+    }
+
+    /**
+     * Gọi Gemini API sinh vector nhúng 768 chiều. Ném Exception nếu có lỗi thay vì fail-open.
+     */
+    private float[] requestEmbedding(String text) throws Exception {
+        if (text == null || text.isBlank()) {
+            throw new IllegalArgumentException("Văn bản đầu vào rỗng");
+        }
+        if (apiKey == null || apiKey.isBlank()) {
+            throw new IllegalStateException("Thiếu cấu hình gemini.api-key");
+        }
+
+        Map<String, Object> requestPayload = Map.of(
+                "model", "models/" + embeddingModel,
+                "content", Map.of("parts", List.of(Map.of("text", text.trim()))),
+                "outputDimensionality", 768
+        );
+
+        String requestJson = objectMapper.writeValueAsString(requestPayload);
+        String endpoint = "/models/" + embeddingModel + ":embedContent";
+
+        String responseJson = geminiRestClient.post()
+                .uri(endpoint)
+                .header("x-goog-api-key", apiKey)
+                .contentType(MediaType.APPLICATION_JSON)
+                .body(requestJson)
+                .retrieve()
+                .body(String.class);
+
+        if (responseJson == null || responseJson.isBlank()) {
+            throw new IllegalStateException("Gemini API trả về response rỗng");
+        }
+
+        JsonNode root = objectMapper.readTree(responseJson);
+        JsonNode valuesNode = root.path("embedding").path("values");
+        if (valuesNode.isArray() && !valuesNode.isEmpty()) {
+            float[] vector = new float[valuesNode.size()];
+            for (int i = 0; i < valuesNode.size(); i++) {
+                vector[i] = (float) valuesNode.get(i).asDouble();
+            }
+            return vector;
+        }
+
+        throw new IllegalStateException("Gemini không trả về vector embedding hợp lệ");
+    }
+
+    /**
+     * Gọi Gemini API sinh vector nhúng cho văn bản tìm kiếm (Fail-Open cho luồng Search).
      *
      * @param text Văn bản cần nhúng ngữ nghĩa
-     * @return Mảng float 768 chiều, hoặc mảng rỗng nếu có lỗi (Fail-Open)
+     * @return Mảng float 768 chiều, hoặc mảng rỗng nếu có lỗi
      */
     public float[] generateEmbedding(String text) {
-        if (text == null || text.isBlank() || apiKey == null || apiKey.isBlank()) {
+        try {
+            return requestEmbedding(text);
+        } catch (Exception e) {
+            log.warn("[Hybrid Search] Lỗi khi gọi Gemini embedContent cho câu tìm kiếm: {}", e.getMessage());
             return new float[0];
         }
-
-        try {
-            Map<String, Object> requestPayload = Map.of(
-                    "model", "models/" + embeddingModel,
-                    "content", Map.of("parts", List.of(Map.of("text", text.trim()))),
-                    "outputDimensionality", 768
-            );
-
-            String requestJson = objectMapper.writeValueAsString(requestPayload);
-            String endpoint = "/models/" + embeddingModel + ":embedContent";
-
-            String responseJson = geminiRestClient.post()
-                    .uri(endpoint)
-                    .header("x-goog-api-key", apiKey)
-                    .contentType(MediaType.APPLICATION_JSON)
-                    .body(requestJson)
-                    .retrieve()
-                    .body(String.class);
-
-            if (responseJson == null || responseJson.isBlank()) {
-                return new float[0];
-            }
-
-            JsonNode root = objectMapper.readTree(responseJson);
-            JsonNode valuesNode = root.path("embedding").path("values");
-            if (valuesNode.isArray() && !valuesNode.isEmpty()) {
-                float[] vector = new float[valuesNode.size()];
-                for (int i = 0; i < valuesNode.size(); i++) {
-                    vector[i] = (float) valuesNode.get(i).asDouble();
-                }
-                return vector;
-            }
-
-        } catch (Exception e) {
-            log.warn("[Hybrid Search] Lỗi khi gọi Gemini embedContent cho văn bản [{}]: {}",
-                    text.substring(0, Math.min(30, text.length())), e.getMessage());
-        }
-
-        return new float[0];
     }
 
     /**
@@ -279,65 +398,22 @@ public class SongEmbeddingService {
 
     /**
      * Đồng bộ hóa và cập nhật vector embedding cho một bài hát vào DB và In-Memory cache.
+     * Tự động nạp quan hệ nếu đối tượng truyền vào chưa được initialize đầy đủ.
      *
      * @param song Thực thể bài hát
      * @return Thực thể SongEmbedding đã lưu
      */
-    @Transactional
-    public SongEmbedding syncSongEmbedding(Song song) {
+    public SongEmbedding syncSongEmbedding(Song song) throws Exception {
         if (song == null || song.getId() == null) {
             return null;
         }
 
-        String artistNames = (song.getArtists() != null && !song.getArtists().isEmpty())
-                ? song.getArtists().stream().map(Artist::getName).collect(Collectors.joining(", "))
-                : "Chưa rõ";
+        Song full = (song.getArtists() != null && song.getGenres() != null)
+                ? song
+                : songRepository.findWithDetailsById(song.getId()).orElse(song);
 
-        String genreNames = (song.getGenres() != null && !song.getGenres().isEmpty())
-                ? song.getGenres().stream().map(Genre::getName).collect(Collectors.joining(", "))
-                : "Chưa rõ";
-
-        String description = (song.getDescription() != null && !song.getDescription().isBlank())
-                ? song.getDescription()
-                : "";
-
-        String searchText = String.format("Tên bài hát: %s | Nghệ sĩ: %s | Thể loại: %s | Mô tả: %s",
-                song.getName(), artistNames, genreNames, description).trim();
-
-        String normalizedTitle = VietnameseTextNormalizer.normalize(song.getName());
-        float[] vector = generateEmbedding(searchText);
-
-        String vectorJson = "[]";
-        try {
-            vectorJson = objectMapper.writeValueAsString(vector);
-        } catch (Exception e) {
-            log.error("[Hybrid Search] Lỗi chuyển đổi vector sang JSON: {}", e.getMessage());
-        }
-
-        SongEmbedding embedding = songEmbeddingRepository.findBySongId(song.getId())
-                .orElse(SongEmbedding.builder()
-                        .songId(song.getId())
-                        .song(song)
-                        .build());
-
-        embedding.setSearchText(searchText);
-        embedding.setNormalizedTitle(normalizedTitle);
-        embedding.setEmbeddingJson(vectorJson);
-
-        SongEmbedding saved = songEmbeddingRepository.save(embedding);
-
-        // Cập nhật bộ nhớ đệm
-        cache.put(song.getId(), new CachedSongMetadata(
-                song.getId(),
-                normalizedTitle,
-                VietnameseTextNormalizer.normalize(searchText),
-                vector
-        ));
-
-        log.info("[Hybrid Search] Đã đồng bộ embedding cho bài hát: {} (ID: {}, Vector size: {})",
-                song.getName(), song.getId(), vector.length);
-
-        return saved;
+        SongSeedPayload p = toPayload(full);
+        return saveEmbedding(p, embedWithRetry(p.searchText()));
     }
 
     /**

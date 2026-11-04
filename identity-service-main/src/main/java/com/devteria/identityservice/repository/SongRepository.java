@@ -5,6 +5,7 @@ import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.EntityGraph;
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Query;
 import org.springframework.stereotype.Repository;
 
 import java.util.List;
@@ -41,4 +42,11 @@ public interface SongRepository extends JpaRepository<Song, String> {
      */
     @EntityGraph(attributePaths = {"artists", "genres"})
     Optional<Song> findWithDetailsById(String id);
+
+    /**
+     * Tải toàn bộ bài hát kèm đầy đủ quan hệ để xử lý batch embedding không bị LazyInitializationException.
+     */
+    @EntityGraph(attributePaths = {"artists", "genres", "album", "year"})
+    @Query("SELECT s FROM Song s")
+    List<Song> findAllWithDetails();
 }

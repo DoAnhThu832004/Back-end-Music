@@ -22,6 +22,7 @@ import java.util.Set;
 
 import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.*;
 
 @ExtendWith(MockitoExtension.class)
@@ -137,7 +138,7 @@ class SongEmbeddingServiceTest {
 
     @Test
     @DisplayName("Sync song embedding persists entity and updates cache")
-    void testSyncSongEmbedding() {
+    void testSyncSongEmbedding() throws Exception {
         Artist artist = new Artist();
         artist.setName("Đen Vâu");
 
@@ -150,6 +151,19 @@ class SongEmbeddingServiceTest {
         song.setDescription("Bài hát ấm áp về gia đình Tết");
         song.setArtists(Set.of(artist));
         song.setGenres(Set.of(genre));
+
+        // Mock RestClient chain cho Gemini API
+        RestClient.RequestBodyUriSpec requestBodyUriSpec = mock(RestClient.RequestBodyUriSpec.class);
+        RestClient.RequestBodySpec requestBodySpec = mock(RestClient.RequestBodySpec.class);
+        RestClient.ResponseSpec responseSpec = mock(RestClient.ResponseSpec.class);
+
+        when(geminiRestClient.post()).thenReturn(requestBodyUriSpec);
+        when(requestBodyUriSpec.uri(anyString())).thenReturn(requestBodySpec);
+        when(requestBodySpec.header(anyString(), anyString())).thenReturn(requestBodySpec);
+        when(requestBodySpec.contentType(any())).thenReturn(requestBodySpec);
+        when(requestBodySpec.body(anyString())).thenReturn(requestBodySpec);
+        when(requestBodySpec.retrieve()).thenReturn(responseSpec);
+        when(responseSpec.body(String.class)).thenReturn("{\"embedding\":{\"values\":[0.1,0.2,0.3]}}");
 
         when(songEmbeddingRepository.findBySongId("test-song-id")).thenReturn(Optional.empty());
         when(songEmbeddingRepository.save(any(SongEmbedding.class))).thenAnswer(invocation -> invocation.getArgument(0));
