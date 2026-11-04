@@ -44,6 +44,7 @@ public class IdentityServiceApplication {
                             System.setProperty(key, value);
                         }
                     }
+                    System.out.println("[EnvLoader] Da nap thanh cong cau hinh tu: " + envFile.getAbsolutePath());
                     break;
                 } catch (Exception ignored) {
                 }
