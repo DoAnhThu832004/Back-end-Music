@@ -3,6 +3,7 @@ package com.devteria.identityservice.service;
 import com.devteria.identityservice.dto.response.ContentModerationResponse;
 import com.devteria.identityservice.entity.Comment;
 import com.devteria.identityservice.entity.Report;
+import com.devteria.identityservice.entity.User;
 import com.devteria.identityservice.enums.IssueType;
 import com.devteria.identityservice.enums.ModerationAction;
 import com.devteria.identityservice.enums.ModerationFlag;
@@ -176,6 +177,41 @@ public class AiModerationService {
 
         } catch (Exception e) {
             log.error("[AI Moderation] Lỗi trong tiến trình kiểm duyệt bình luận async (Fail-Open): {}", e.getMessage(), e);
+        }
+    }
+    /**
+     * Tác vụ Async kiểm duyệt tin nhắn trong phiên chat AI.
+     * Chạy trên thread pool riêng, không làm chậm luồng SSE chat (Fail-Open).
+     */
+    @Async("aiTaskExecutor")
+    @Transactional
+    public void moderateUserChatAsync(String text, User user, String songId) {
+        try {
+            if (user == null || !tryAcquireUserSlot(user.getId())) {
+                return;
+            }
+            if (text == null || text.isBlank()) {
+                return;
+            }
+            Optional<ContentModerationResponse> resultOpt = moderateContent(text);
+            if (resultOpt.isEmpty()) return;
+
+            ContentModerationResponse result = resultOpt.get();
+            if (result.getSuggestedAction() == ModerationAction.FLAG_FOR_ADMIN ||
+                    result.getSuggestedAction() == ModerationAction.AUTO_HIDE) {
+                Report report = new Report();
+                report.setUser(user);
+                report.setTargetType(TargetType.SONG);
+                report.setTargetId(songId != null ? songId : "AI_CHAT");
+                report.setIssueType(IssueType.OTHER);
+                report.setStatus(ReportStatus.PENDING);
+                report.setDescription(String.format("[AI Auto-Flag: %s (%s)] Tin nhắn AI Chat: \"%s\" | Lý do: %s",
+                        result.getFlag(), result.getSuggestedAction(), text, result.getReason()));
+                reportRepository.save(report);
+                log.info("[AI Moderation] Đã tự động tạo Report cho vi phạm của tin nhắn chat từ user {}", user.getUsername());
+            }
+        } catch (Exception e) {
+            log.error("[AI Moderation] Lỗi khi kiểm duyệt chat message async (Fail-Open): {}", e.getMessage());
         }
     }
 }

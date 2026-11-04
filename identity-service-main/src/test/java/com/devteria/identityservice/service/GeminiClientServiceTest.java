@@ -1,5 +1,6 @@
 package com.devteria.identityservice.service;
 
+import com.devteria.identityservice.enums.MessageStatus;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
@@ -10,9 +11,14 @@ import org.springframework.http.MediaType;
 import org.springframework.test.util.ReflectionTestUtils;
 import org.springframework.test.web.client.MockRestServiceServer;
 import org.springframework.web.client.RestClient;
+import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
 
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.Semaphore;
+import java.util.concurrent.TimeUnit;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.springframework.test.web.client.match.MockRestRequestMatchers.header;
@@ -113,6 +119,7 @@ class GeminiClientServiceTest {
 
         mockServer.expect(requestTo("https://generativelanguage.googleapis.com/v1beta/models/gemini-3.5-flash:generateContent"))
                 .andExpect(method(HttpMethod.POST))
+                .andExpect(header("x-goog-api-key", "test-api-key"))
                 .andRespond(withSuccess(malformedGeminiResponse, MediaType.APPLICATION_JSON));
 
         Optional<TestResponseDto> result = geminiClientService.generateStructuredOutput(
@@ -120,5 +127,62 @@ class GeminiClientServiceTest {
 
         mockServer.verify();
         assertThat(result).isEmpty();
+    }
+
+    @Test
+    @DisplayName("streamGenerateContent thành công -> stream chunks và gọi callback với COMPLETE")
+    void streamGenerateContent_success() throws Exception {
+        String ssePayload = """
+data: {"candidates": [{"content": {"parts": [{"text": "Giai điệu "}]}}]}
+
+data: {"candidates": [{"content": {"parts": [{"text": "rất chill."}]}}], "usageMetadata": {"totalTokenCount": 45}}
+
+""";
+
+        mockServer.expect(requestTo("https://generativelanguage.googleapis.com/v1beta/models/gemini-3.5-flash:streamGenerateContent?alt=sse"))
+                .andExpect(method(HttpMethod.POST))
+                .andExpect(header("x-goog-api-key", "test-api-key"))
+                .andRespond(withSuccess(ssePayload, MediaType.TEXT_EVENT_STREAM));
+
+        SseEmitter emitter = new SseEmitter(90_000L);
+        CompletableFuture<GeminiClientService.StreamResult> future = new CompletableFuture<>();
+
+        geminiClientService.streamGenerateContent(
+                List.of(Map.of("role", "user", "parts", List.of(Map.of("text", "Xin chào")))),
+                "Bạn là DJ",
+                emitter,
+                future::complete
+        );
+
+        GeminiClientService.StreamResult result = future.get(5, TimeUnit.SECONDS);
+
+        mockServer.verify();
+        assertThat(result).isNotNull();
+        assertThat(result.status()).isEqualTo(MessageStatus.COMPLETE);
+        assertThat(result.fullContent()).isEqualTo("Giai điệu rất chill.");
+        assertThat(result.totalTokens()).isEqualTo(45);
+    }
+
+    @Test
+    @DisplayName("streamGenerateContent bị từ chối khi Semaphore hết permit -> trả về status FAILED")
+    void streamGenerateContent_semaphoreBusy_fails() throws Exception {
+        Semaphore emptySemaphore = new Semaphore(0);
+        ReflectionTestUtils.setField(geminiClientService, "aiStreamingSemaphore", emptySemaphore);
+
+        SseEmitter emitter = new SseEmitter(90_000L);
+        CompletableFuture<GeminiClientService.StreamResult> future = new CompletableFuture<>();
+
+        geminiClientService.streamGenerateContent(
+                List.of(Map.of("role", "user", "parts", List.of(Map.of("text", "Xin chào")))),
+                "Bạn là DJ",
+                emitter,
+                future::complete
+        );
+
+        GeminiClientService.StreamResult result = future.get(6, TimeUnit.SECONDS);
+
+        assertThat(result).isNotNull();
+        assertThat(result.status()).isEqualTo(MessageStatus.FAILED);
+        assertThat(result.errorMessage()).contains("quá tải");
     }
 }

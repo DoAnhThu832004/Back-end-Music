@@ -24,7 +24,10 @@ public enum ErrorCode {
     ARTIST_NOT_EXISTED(2003, "Artist not existed", HttpStatus.NOT_FOUND),
     WRONG_PASSWORD(1009, "Old password is incorrect", HttpStatus.BAD_REQUEST),
     PASSWORD_MISMATCH(1010, "New password and confirm password do not match", HttpStatus.BAD_REQUEST),
-    USER_BLOCKED(1011, "Your account has been blocked by admin", HttpStatus.FORBIDDEN)
+    USER_BLOCKED(1011, "Your account has been blocked by admin", HttpStatus.FORBIDDEN),
+    SESSION_NOT_EXISTED(2008, "Chat session not existed", HttpStatus.NOT_FOUND),
+    AI_RATE_LIMIT_EXCEEDED(3001, "AI request rate limit exceeded", HttpStatus.TOO_MANY_REQUESTS),
+    AI_SESSION_BUSY(3002, "Another AI stream is in progress for this session", HttpStatus.CONFLICT)
     ;
 
     ErrorCode(int code, String message, HttpStatusCode statusCode) {

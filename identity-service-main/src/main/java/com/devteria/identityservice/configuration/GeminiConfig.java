@@ -18,11 +18,27 @@ public class GeminiConfig {
     @Value("${gemini.read-timeout-ms:15000}")
     private int readTimeout;
 
-    @Bean
+    @Value("${gemini.stream-read-timeout-ms:90000}")
+    private int streamReadTimeout;
+
+    @Bean(name = "geminiRestClient")
     public RestClient geminiRestClient() {
         SimpleClientHttpRequestFactory requestFactory = new SimpleClientHttpRequestFactory();
         requestFactory.setConnectTimeout(connectTimeout);
         requestFactory.setReadTimeout(readTimeout);
+
+        return RestClient.builder()
+                .baseUrl(baseUrl)
+                .requestFactory(requestFactory)
+                .defaultHeader("Content-Type", "application/json")
+                .build();
+    }
+
+    @Bean(name = "geminiStreamRestClient")
+    public RestClient geminiStreamRestClient() {
+        SimpleClientHttpRequestFactory requestFactory = new SimpleClientHttpRequestFactory();
+        requestFactory.setConnectTimeout(connectTimeout);
+        requestFactory.setReadTimeout(streamReadTimeout);
 
         return RestClient.builder()
                 .baseUrl(baseUrl)
