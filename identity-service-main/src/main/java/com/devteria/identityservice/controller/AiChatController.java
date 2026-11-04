@@ -144,6 +144,12 @@ public class AiChatController {
                 emitter,
                 streamResult -> {
                     try {
+                        // Nếu stream lỗi ngay từ đầu và không có nội dung, không lưu tin nhắn rỗng vào DB
+                        if (streamResult.status() == MessageStatus.FAILED && (streamResult.fullContent() == null || streamResult.fullContent().isBlank())) {
+                            log.warn("[AI Chat] Luồng AI lỗi trước khi sinh nội dung cho session {}, không lưu tin nhắn rỗng vào DB.", session.getId());
+                            return;
+                        }
+
                         // Lưu câu trả lời của AI vào DB (COMPLETE hoặc INTERRUPTED)
                         ChatMessage aiMessage = ChatMessage.builder()
                                 .session(session)
