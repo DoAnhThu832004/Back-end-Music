@@ -13,5 +13,12 @@ public record AiChatStreamRequest(
         @Size(min = 1, max = 1000, message = "Tin nhắn không được vượt quá 1000 ký tự")
         String message,
 
-        String currentSongId
-) {}
+        String currentSongId,
+
+        Boolean clientSupportsTransportActions
+) {
+    // Constructor nạp chồng bảo toàn tương thích ngược cho các unit test và mã nguồn cũ
+    public AiChatStreamRequest(String sessionId, String message, String currentSongId) {
+        this(sessionId, message, currentSongId, false);
+    }
+}

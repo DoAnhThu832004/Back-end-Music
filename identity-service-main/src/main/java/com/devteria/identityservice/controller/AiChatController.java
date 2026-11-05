@@ -1,5 +1,6 @@
 package com.devteria.identityservice.controller;
 
+import com.devteria.identityservice.dto.FastPathResult;
 import com.devteria.identityservice.dto.request.AiChatStreamRequest;
 import com.devteria.identityservice.entity.ChatMessage;
 import com.devteria.identityservice.entity.ChatSession;
@@ -14,16 +15,23 @@ import com.devteria.identityservice.repository.ChatSessionRepository;
 import com.devteria.identityservice.repository.SongRepository;
 import com.devteria.identityservice.repository.UserRepository;
 import com.devteria.identityservice.service.*;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import io.micrometer.core.instrument.MeterRegistry;
+import io.micrometer.core.instrument.Timer;
 import jakarta.validation.Valid;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.MediaType;
 import org.springframework.security.core.Authentication;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
 
-import java.util.List;
-import java.util.Map;
+import java.io.IOException;
+import java.time.LocalDateTime;
+import java.time.temporal.ChronoUnit;
+import java.util.*;
 
 @RestController
 @RequestMapping("/ai/chat")
@@ -40,6 +48,13 @@ public class AiChatController {
     private final AiAgentOrchestrator aiAgentOrchestrator;
     private final AiModerationService aiModerationService;
     private final AiChatSessionService aiChatSessionService;
+    private final ObjectMapper objectMapper;
+
+    @Autowired(required = false)
+    private MeterRegistry meterRegistry;
+
+    @Value("${ai.router.fast-path-enabled:true}")
+    private boolean fastPathEnabled = true;
 
     public AiChatController(
             ChatSessionRepository chatSessionRepository,
@@ -51,7 +66,8 @@ public class AiChatController {
             AiPersonaPromptFactory promptFactory,
             AiAgentOrchestrator aiAgentOrchestrator,
             AiModerationService aiModerationService,
-            AiChatSessionService aiChatSessionService) {
+            AiChatSessionService aiChatSessionService,
+            ObjectMapper objectMapper) {
         this.chatSessionRepository = chatSessionRepository;
         this.chatMessageRepository = chatMessageRepository;
         this.userRepository = userRepository;
@@ -62,6 +78,7 @@ public class AiChatController {
         this.aiAgentOrchestrator = aiAgentOrchestrator;
         this.aiModerationService = aiModerationService;
         this.aiChatSessionService = aiChatSessionService;
+        this.objectMapper = objectMapper;
     }
 
     private User getAuthenticatedUser() {
@@ -89,18 +106,37 @@ public class AiChatController {
         // 2. Kiểm tra Rate Limiting & Quota người dùng
         aiChatGuardService.validateAndRecordUserRequest(currentUser.getId());
 
-        // 3. Khóa phiên Concurrency Session Lock (Chống spam song song)
-        aiChatGuardService.checkAndLockSession(session.getId());
-
-        // 4. Lấy thông tin bài hát hiện tại nếu có
+        // Lấy thông tin bài hát hiện tại nếu có (cần cho cả Fast-Path lẫn LLM)
         Song currentSong = (request.currentSongId() != null && !request.currentSongId().isBlank())
                 ? songRepository.findById(request.currentSongId()).orElse(null)
                 : null;
 
-        // 5. Lấy lịch sử hội thoại trước khi lưu câu hỏi mới (tránh duplicate)
+        // 2.5. Kiểm tra Fast-Path TRƯỚC Concurrency Session Lock
+        boolean hasPriorHistory = chatMessageRepository.existsBySessionId(session.getId());
+        if (fastPathEnabled) {
+            boolean clientSupportsTransport = Boolean.TRUE.equals(request.clientSupportsTransportActions());
+            Optional<FastPathResult> fastResultOpt = FastPathEngine.evaluate(
+                    request.message(),
+                    session.getPersona(),
+                    request.currentSongId(),
+                    hasPriorHistory,
+                    clientSupportsTransport
+            );
+
+            if (fastResultOpt.isPresent()) {
+                log.info("[AI Chat] Yêu cầu khớp Fast-Path ({}) cho session {}. Bỏ qua Session Lock & LLM.",
+                        fastResultOpt.get().type(), session.getId());
+                return handleFastPathExecution(session, currentUser, currentSong, fastResultOpt.get(), request, hasPriorHistory);
+            }
+        }
+
+        // 3. Khóa phiên Concurrency (Chặn 2 stream song song trên cùng 1 session)
+        aiChatGuardService.checkAndLockSession(session.getId());
+
+        // 4. Lấy lịch sử hội thoại trước khi lưu câu hỏi mới (tránh duplicate)
         List<ChatMessage> history = conversationMemoryManager.getSlidingWindowHistory(session.getId());
 
-        // 6. Lưu tin nhắn USER vào DB trước khi mở luồng stream
+        // 5. Lưu tin nhắn USER vào DB trước khi mở luồng stream
         ChatMessage userMessage = ChatMessage.builder()
                 .session(session)
                 .sender(MessageSender.USER)
@@ -111,18 +147,18 @@ public class AiChatController {
                 .build();
         chatMessageRepository.save(userMessage);
 
-        // 7. Tự động cập nhật tiêu đề session từ câu hỏi đầu tiên nếu còn là mặc định
+        // 6. Tự động cập nhật tiêu đề session từ câu hỏi đầu tiên nếu còn là mặc định
         aiChatSessionService.updateSessionTitleIfDefault(session.getId(), request.message());
 
-        // 8. Kích hoạt bất đồng bộ kiểm duyệt nội dung (Fail-Open, không chặn chat)
+        // 7. Kích hoạt bất đồng bộ kiểm duyệt nội dung (Fail-Open, không chặn chat)
         aiModerationService.moderateUserChatAsync(request.message(), currentUser, request.currentSongId());
 
-        // 9. Chuẩn bị ngữ cảnh hội thoại (Sliding Window & Prompt Grounding)
+        // 8. Chuẩn bị ngữ cảnh hội thoại (Sliding Window & Prompt Grounding)
         String safePrompt = promptFactory.buildSafeUserPrompt(request.message());
         List<Map<String, Object>> contents = conversationMemoryManager.buildGeminiContents(history, safePrompt);
         String systemInstruction = promptFactory.buildSystemInstruction(session.getPersona(), request.currentSongId());
 
-        // 10. Khởi tạo SseEmitter với timeout 90 giây
+        // 9. Khởi tạo SseEmitter với timeout 90 giây
         SseEmitter emitter = new SseEmitter(90_000L);
 
         // Đăng ký callback dọn dẹp khóa session
@@ -137,12 +173,15 @@ public class AiChatController {
             aiChatGuardService.releaseSessionLock(session.getId());
         });
 
-        // 11. Mở luồng stream Non-blocking với Gemini
+        // 10. Mở luồng stream Non-blocking với Gemini kèm Model Routing & Breaker
         aiAgentOrchestrator.orchestrateTurn(
                 currentUser.getUsername(),
                 request.message(),
                 contents,
                 systemInstruction,
+                session.getPersona(),
+                request.currentSongId(),
+                hasPriorHistory,
                 emitter,
                 turnResult -> {
                     try {
@@ -173,5 +212,89 @@ public class AiChatController {
         );
 
         return emitter;
+    }
+
+    /**
+     * Xử lý luồng phản hồi tức thì của Fast-Path:
+     * - Đo đạc latency qua Timer ai.latency.fastpath & Counter ai.fastpath.hits.
+     * - Lưu tin nhắn User và AI vào DB với timestamp tách biệt (+5ms).
+     * - Trả về SseEmitter riêng biệt KHÔNG giải phóng Session Lock của luồng stream khác.
+     */
+    private SseEmitter handleFastPathExecution(
+            ChatSession session,
+            User currentUser,
+            Song currentSong,
+            FastPathResult fastResult,
+            AiChatStreamRequest request,
+            boolean hasPriorHistory) {
+
+        Timer.Sample sample = (meterRegistry != null) ? Timer.start(meterRegistry) : null;
+
+        // 1. Cập nhật tiêu đề session nếu là Turn 1
+        if (!hasPriorHistory) {
+            aiChatSessionService.updateSessionTitleIfDefault(session.getId(), request.message());
+        }
+
+        // 2. Lưu tin nhắn USER vào DB với timestamp T1
+        LocalDateTime userTimestamp = LocalDateTime.now();
+        ChatMessage userMessage = ChatMessage.builder()
+                .session(session)
+                .sender(MessageSender.USER)
+                .status(MessageStatus.COMPLETE)
+                .content(request.message().trim())
+                .currentSong(currentSong)
+                .tokenCount(0)
+                .build();
+        userMessage.setCreatedAt(userTimestamp);
+        chatMessageRepository.save(userMessage);
+
+        // 3. Lưu tin nhắn AI Fast-Path vào DB với timestamp T1 + 5ms (đảm bảo thứ tự thời gian phân định)
+        ChatMessage aiMessage = ChatMessage.builder()
+                .session(session)
+                .sender(MessageSender.AI)
+                .status(MessageStatus.COMPLETE)
+                .content(fastResult.responseText())
+                .currentSong(currentSong)
+                .tokenCount(0)
+                .build();
+        aiMessage.setCreatedAt(userTimestamp.plus(5, ChronoUnit.MILLIS));
+        chatMessageRepository.save(aiMessage);
+
+        // 4. Khởi tạo Emitter riêng cho Fast-Path: KHÔNG đăng ký releaseSessionLock
+        SseEmitter fastEmitter = new SseEmitter(10_000L);
+        try {
+            // Gửi delta chunk
+            Map<String, Object> chunkPacket = Map.of(
+                    "delta", fastResult.responseText(),
+                    "done", false
+            );
+            fastEmitter.send(SseEmitter.event().data(objectMapper.writeValueAsString(chunkPacket)));
+
+            // Gửi complete packet
+            Map<String, Object> completePacket = new LinkedHashMap<>();
+            completePacket.put("delta", "");
+            completePacket.put("done", true);
+            completePacket.put("status", "COMPLETE");
+            completePacket.put("totalTokens", 0);
+            completePacket.put("suggestedSongs", Collections.emptyList());
+            completePacket.put("playerAction", fastResult.playerAction());
+            completePacket.put("playlistProposal", null);
+
+            fastEmitter.send(SseEmitter.event().data(objectMapper.writeValueAsString(completePacket)));
+            fastEmitter.complete();
+            log.info("[Fast-Path] Đã xử lý lệnh thành công cho session {}: type={}, text='{}'",
+                    session.getId(), fastResult.type(), fastResult.responseText());
+        } catch (IOException e) {
+            log.warn("[Fast-Path] Lỗi khi gửi SSE gói tin Fast-Path cho session {}: {}", session.getId(), e.getMessage());
+            fastEmitter.completeWithError(e);
+        } finally {
+            if (sample != null && meterRegistry != null) {
+                sample.stop(meterRegistry.timer("ai.latency.fastpath"));
+            }
+            if (meterRegistry != null) {
+                meterRegistry.counter("ai.fastpath.hits", "type", fastResult.type().name().toLowerCase(Locale.ROOT)).increment();
+            }
+        }
+        return fastEmitter;
     }
 }

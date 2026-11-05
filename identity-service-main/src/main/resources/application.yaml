@@ -35,3 +35,31 @@ gemini:
   base-url: https://generativelanguage.googleapis.com/v1beta
   connect-timeout-ms: 5000
   read-timeout-ms: 15000
+
+ai:
+  router:
+    fast-path-enabled: ${AI_FAST_PATH_ENABLED:true}
+    reasoning-tier-enabled: ${AI_REASONING_TIER_ENABLED:true}
+    fast-tier-model: ${GEMINI_FAST_MODEL:${gemini.model:gemini-3.5-flash-lite}}
+    reasoning-tier-model: ${GEMINI_REASONING_MODEL:gemini-2.5-pro}
+    first-token-timeout-ms: 8000
+
+resilience4j:
+  circuitbreaker:
+    instances:
+      geminiCriticRouter:
+        sliding-window-type: TIME_BASED
+        sliding-window-size: 120
+        minimum-number-of-calls: 4
+        failure-rate-threshold: 50.0
+        wait-duration-in-open-state: 30s
+        permitted-number-of-calls-in-half-open-state: 2
+        record-exceptions:
+          - org.springframework.web.client.HttpClientErrorException$TooManyRequests
+          - org.springframework.web.client.HttpServerErrorException
+          - org.springframework.web.client.ResourceAccessException
+          - com.devteria.identityservice.exception.FirstTokenTimeoutException
+        ignore-exceptions:
+          - org.apache.catalina.connector.ClientAbortException
+          - org.springframework.web.context.request.async.AsyncRequestNotUsableException
+

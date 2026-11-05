@@ -1,12 +1,19 @@
 package com.devteria.identityservice.service;
 
+import com.devteria.identityservice.configuration.AiRouterProperties;
 import com.devteria.identityservice.dto.response.PlayerActionDto;
 import com.devteria.identityservice.dto.response.PlaylistProposalDto;
 import com.devteria.identityservice.dto.response.SongCardDto;
+import com.devteria.identityservice.enums.AiPersona;
 import com.devteria.identityservice.enums.MessageStatus;
+import com.devteria.identityservice.enums.ModelTier;
+import com.devteria.identityservice.exception.FirstTokenTimeoutException;
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import io.github.resilience4j.circuitbreaker.CircuitBreaker;
+import io.github.resilience4j.circuitbreaker.CircuitBreakerRegistry;
+import io.micrometer.core.instrument.MeterRegistry;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Qualifier;
@@ -16,10 +23,6 @@ import org.springframework.stereotype.Service;
 import org.springframework.web.client.RestClient;
 import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
 
-import java.io.BufferedReader;
-import java.io.InputStream;
-import java.io.InputStreamReader;
-import java.nio.charset.StandardCharsets;
 import java.util.*;
 import java.util.concurrent.*;
 import java.util.concurrent.atomic.AtomicBoolean;
@@ -27,12 +30,12 @@ import java.util.concurrent.atomic.AtomicInteger;
 import java.util.function.Consumer;
 
 /**
- * Bộ điều phối Multi-Step Agent Loop cho Gemini Function Calling (Task 3A.7).
- * - Giữ nguyên duy nhất 1 SseEmitter từ đầu đến cuối kết nối với Mobile App.
+ * Bộ điều phối Multi-Step Agent Loop cho Gemini Function Calling (Lớp 7 - Stage 2).
  * - Quản lý tối đa MAX_TOOL_ITERATIONS = 3 vòng lặp công cụ.
- * - Hỗ trợ thực thi nhiều functionCall song song trong một lượt phản hồi của LLM.
- * - Bắn sự kiện tool_status theo thời gian thực xuống client.
- * - Duy trì turnAllowedSongIds chống ảo giác ID bài hát.
+ * - Tích hợp ModelRouterService & Resilience4j Circuit Breaker (geminiCriticRouter).
+ * - Permit Lifecycle & First-Token Watchdog 8000ms.
+ * - Chặn tuyệt đối Fallback khi executedToolsCount > 0 (tránh lặp tool).
+ * - Phân loại ngoại lệ theo nguồn: ClientAbortException vs Upstream errors.
  */
 @Service
 @Slf4j
@@ -47,6 +50,10 @@ public class AiAgentOrchestrator {
     private final MusicToolExecutor musicToolExecutor;
     private final ExecutorService aiStreamingExecutor;
     private final Semaphore aiStreamingSemaphore;
+    private final ModelRouterService modelRouterService;
+    private final AiRouterProperties routerProperties;
+    private final CircuitBreakerRegistry circuitBreakerRegistry;
+    private final MeterRegistry meterRegistry;
 
     @Value("${gemini.api-key:}")
     private String apiKey;
@@ -61,8 +68,73 @@ public class AiAgentOrchestrator {
             List<SongCardDto> suggestedSongs,
             PlayerActionDto playerAction,
             PlaylistProposalDto playlistProposal,
-            String errorMessage
-    ) {}
+            String errorMessage,
+            boolean usedPersonalTool,
+            boolean wasFallbackTriggered,
+            boolean degradedByBreaker,
+            String actualModelUsed
+    ) {
+        public AgentTurnResult(
+                String fullText,
+                int totalTokens,
+                MessageStatus status,
+                List<SongCardDto> suggestedSongs,
+                PlayerActionDto playerAction,
+                PlaylistProposalDto playlistProposal,
+                String errorMessage
+        ) {
+            this(fullText, totalTokens, status, suggestedSongs, playerAction, playlistProposal, errorMessage, false, false, false, "gemini-3.5-flash-lite");
+        }
+
+        public static AgentTurnResult forCacheHit(String text, List<SongCardDto> songs) {
+            return new AgentTurnResult(
+                    text, 0, MessageStatus.COMPLETE, songs != null ? songs : Collections.emptyList(),
+                    null, null, null, false, false, false, "semantic-cache"
+            );
+        }
+
+        public static AgentTurnResult failed(String errorCode) {
+            return new AgentTurnResult("", 0, MessageStatus.FAILED, Collections.emptyList(), null, null, errorCode, false, false, false, "none");
+        }
+
+        public static AgentTurnResult interrupted(String fullText, int totalTokens, String errorMessage) {
+            MessageStatus status = (fullText != null && !fullText.isBlank()) ? MessageStatus.INTERRUPTED : MessageStatus.FAILED;
+            return new AgentTurnResult(fullText != null ? fullText : "", totalTokens, status, Collections.emptyList(), null, null, errorMessage, false, false, false, "unknown");
+        }
+
+        public static AgentTurnResult success(
+                String fullText, int totalTokens, List<SongCardDto> songs,
+                PlayerActionDto playerAction, PlaylistProposalDto proposal,
+                String modelUsed, boolean usedPersonalTool, boolean wasFallbackTriggered, boolean degradedByBreaker) {
+            return new AgentTurnResult(
+                    fullText, totalTokens, MessageStatus.COMPLETE, songs, playerAction, proposal, null,
+                    usedPersonalTool, wasFallbackTriggered, degradedByBreaker, modelUsed
+            );
+        }
+    }
+
+    public AiAgentOrchestrator(
+            @Qualifier("geminiRestClient") RestClient geminiRestClient,
+            @Qualifier("geminiStreamRestClient") RestClient geminiStreamRestClient,
+            ObjectMapper objectMapper,
+            GeminiToolDeclarationFactory toolDeclarationFactory,
+            MusicToolExecutor musicToolExecutor,
+            @Qualifier("aiStreamingExecutor") ExecutorService aiStreamingExecutor,
+            @Qualifier("aiStreamingSemaphore") Semaphore aiStreamingSemaphore) {
+        this(
+                geminiRestClient,
+                geminiStreamRestClient,
+                objectMapper,
+                toolDeclarationFactory,
+                musicToolExecutor,
+                aiStreamingExecutor,
+                aiStreamingSemaphore,
+                new ModelRouterService(new AiRouterProperties(), CircuitBreakerRegistry.ofDefaults(), null),
+                new AiRouterProperties(),
+                CircuitBreakerRegistry.ofDefaults(),
+                null
+        );
+    }
 
     @Autowired
     public AiAgentOrchestrator(
@@ -72,7 +144,11 @@ public class AiAgentOrchestrator {
             GeminiToolDeclarationFactory toolDeclarationFactory,
             MusicToolExecutor musicToolExecutor,
             @Qualifier("aiStreamingExecutor") ExecutorService aiStreamingExecutor,
-            @Qualifier("aiStreamingSemaphore") Semaphore aiStreamingSemaphore) {
+            @Qualifier("aiStreamingSemaphore") Semaphore aiStreamingSemaphore,
+            ModelRouterService modelRouterService,
+            AiRouterProperties routerProperties,
+            CircuitBreakerRegistry circuitBreakerRegistry,
+            @Autowired(required = false) MeterRegistry meterRegistry) {
         this.geminiRestClient = geminiRestClient;
         this.geminiStreamRestClient = geminiStreamRestClient != null ? geminiStreamRestClient : geminiRestClient;
         this.objectMapper = objectMapper;
@@ -80,10 +156,14 @@ public class AiAgentOrchestrator {
         this.musicToolExecutor = musicToolExecutor;
         this.aiStreamingExecutor = aiStreamingExecutor != null ? aiStreamingExecutor : Executors.newVirtualThreadPerTaskExecutor();
         this.aiStreamingSemaphore = aiStreamingSemaphore != null ? aiStreamingSemaphore : new Semaphore(50);
+        this.modelRouterService = modelRouterService;
+        this.routerProperties = routerProperties != null ? routerProperties : new AiRouterProperties();
+        this.circuitBreakerRegistry = circuitBreakerRegistry != null ? circuitBreakerRegistry : CircuitBreakerRegistry.ofDefaults();
+        this.meterRegistry = meterRegistry;
     }
 
     /**
-     * Điều phối toàn bộ một lượt tương tác Agentic Chat trên luồng SSE.
+     * Quá tải 6 tham số để tương thích ngược với các caller cũ và unit test cũ.
      */
     public void orchestrateTurn(
             String currentUsername,
@@ -92,11 +172,61 @@ public class AiAgentOrchestrator {
             String systemInstruction,
             SseEmitter emitter,
             Consumer<AgentTurnResult> onCompleteCallback) {
+        orchestrateTurn(
+                currentUsername,
+                userRawPrompt,
+                initialContents,
+                systemInstruction,
+                AiPersona.GENZ_DJ,
+                null,
+                false,
+                emitter,
+                onCompleteCallback
+        );
+    }
+
+    /**
+     * Điều phối toàn bộ một lượt tương tác Agentic Chat trên luồng SSE kèm Model Routing & Breaker Lifecycle.
+     */
+    public void orchestrateTurn(
+            String currentUsername,
+            String userRawPrompt,
+            List<Map<String, Object>> initialContents,
+            String systemInstruction,
+            AiPersona currentPersona,
+            String currentSongId,
+            boolean hasPriorHistory,
+            SseEmitter emitter,
+            Consumer<AgentTurnResult> onCompleteCallback) {
 
         aiStreamingExecutor.submit(() -> {
             boolean acquired = false;
             ScheduledExecutorService heartbeatScheduler = null;
             AtomicBoolean isFinished = new AtomicBoolean(false);
+
+            // 1. Phân làn mô hình (Routing Decision)
+            RoutingDecision routingDecision = modelRouterService.resolveDecision(userRawPrompt, currentPersona);
+            String currentTargetModel = routingDecision.targetModel();
+            boolean degradedByBreaker = routingDecision.degradedByBreaker();
+            boolean wasFallbackTriggered = false;
+            boolean usedPersonalTool = false;
+            int executedToolsCount = 0;
+
+            // 2. Quản lý Permit cho Reasoning Tier
+            CircuitBreaker circuitBreaker = circuitBreakerRegistry.circuitBreaker(ModelRouterService.CIRCUIT_BREAKER_INSTANCE);
+            boolean permitAcquired = false;
+            AtomicBoolean resultRecorded = new AtomicBoolean(false);
+            long permitStartNs = System.nanoTime();
+
+            if (routingDecision.tier() == ModelTier.REASONING_TIER) {
+                if (!circuitBreaker.tryAcquirePermission()) {
+                    log.warn("[Agent Orchestrator] Circuit Breaker không cấp permit. Hạ cấp tức thì sang {}", routerProperties.getFastTierModel());
+                    currentTargetModel = routerProperties.getFastTierModel();
+                    degradedByBreaker = true;
+                } else {
+                    permitAcquired = true;
+                }
+            }
 
             // Trạng thái theo lượt (Turn State)
             Set<String> turnAllowedSongIds = new HashSet<>();
@@ -114,8 +244,7 @@ public class AiAgentOrchestrator {
                     log.warn("[Agent Orchestrator] Đạt giới hạn 50 luồng đồng thời. Từ chối.");
                     sendErrorPacket(emitter, "AI_SERVER_BUSY");
                     if (onCompleteCallback != null) {
-                        onCompleteCallback.accept(new AgentTurnResult("", 0, MessageStatus.FAILED,
-                                Collections.emptyList(), null, null, "AI_SERVER_BUSY"));
+                        onCompleteCallback.accept(AgentTurnResult.failed("AI_SERVER_BUSY"));
                     }
                     emitter.complete();
                     return;
@@ -140,9 +269,8 @@ public class AiAgentOrchestrator {
 
                 while (shouldContinueLoop && currentIteration < MAX_TOOL_ITERATIONS) {
                     currentIteration++;
-                    log.info("[Agent Orchestrator] Bắt đầu Iteration {}/{}", currentIteration, MAX_TOOL_ITERATIONS);
+                    log.info("[Agent Orchestrator] Bắt đầu Iteration {}/{}, Model={}", currentIteration, MAX_TOOL_ITERATIONS, currentTargetModel);
 
-                    // 1. Chuẩn bị payload gọi Gemini (nếu là vòng lặp cuối cùng, không kèm tools để buộc sinh text)
                     Map<String, Object> requestPayload = new LinkedHashMap<>();
                     if (systemInstruction != null && !systemInstruction.isBlank()) {
                         requestPayload.put("system_instruction", Map.of(
@@ -161,15 +289,53 @@ public class AiAgentOrchestrator {
                     requestPayload.put("generationConfig", generationConfig);
 
                     String requestJson = objectMapper.writeValueAsString(requestPayload);
-                    String endpoint = "/models/" + model + ":generateContent";
+                    String endpoint = "/models/" + currentTargetModel + ":generateContent";
 
-                    String responseJson = geminiRestClient.post()
-                            .uri(endpoint)
-                            .header("x-goog-api-key", apiKey)
-                            .contentType(MediaType.APPLICATION_JSON)
-                            .body(requestJson)
-                            .retrieve()
-                            .body(String.class);
+                    String responseJson;
+                    try {
+                        responseJson = callWithWatchdog(endpoint, requestJson, routerProperties.getFirstTokenTimeoutMs());
+                    } catch (Exception callEx) {
+                        log.error("[Agent Orchestrator] Lỗi khi gọi Gemini (Model={}): {}", currentTargetModel, callEx.getMessage());
+
+                        // Phân biệt lỗi Client Abort
+                        if (isClientAbort(callEx)) {
+                            if (permitAcquired && !resultRecorded.get()) {
+                                circuitBreaker.releasePermission();
+                                resultRecorded.set(true);
+                            }
+                            throw callEx;
+                        }
+
+                        // Lỗi upstream: ghi nhận vào Breaker nếu đang giữ permit
+                        if (permitAcquired && !resultRecorded.get()) {
+                            circuitBreaker.onError(System.nanoTime() - permitStartNs, TimeUnit.NANOSECONDS, callEx);
+                            resultRecorded.set(true);
+                        }
+
+                        // Fallback logic
+                        if (executedToolsCount == 0 && !wasFallbackTriggered && routingDecision.tier() == ModelTier.REASONING_TIER) {
+                            log.warn("[Agent Orchestrator] Kích hoạt Fallback từ {} sang {}", currentTargetModel, routerProperties.getFastTierModel());
+                            wasFallbackTriggered = true;
+                            String fromModel = currentTargetModel;
+                            currentTargetModel = routerProperties.getFastTierModel();
+                            if (meterRegistry != null) {
+                                meterRegistry.counter("ai.router.fallbacks", "from", fromModel, "to", currentTargetModel).increment();
+                            }
+                            // Thử lại với fastTierModel
+                            endpoint = "/models/" + currentTargetModel + ":generateContent";
+                            responseJson = callWithWatchdog(endpoint, requestJson, routerProperties.getFirstTokenTimeoutMs());
+                        } else {
+                            if (executedToolsCount > 0) {
+                                log.error("[Agent Orchestrator] executedToolsCount = {}, CẤM fallback sang mô hình khác. Dừng an toàn với AI_SERVER_BUSY.", executedToolsCount);
+                                sendErrorPacket(emitter, "AI_SERVER_BUSY");
+                                if (onCompleteCallback != null) {
+                                    onCompleteCallback.accept(AgentTurnResult.failed("AI_SERVER_BUSY"));
+                                }
+                                return;
+                            }
+                            throw callEx;
+                        }
+                    }
 
                     if (responseJson == null || responseJson.isBlank()) {
                         log.warn("[Agent Orchestrator] Gemini phản hồi rỗng tại iteration {}", currentIteration);
@@ -213,14 +379,13 @@ public class AiAgentOrchestrator {
                         String finalText = textPartsBuilder.toString();
                         fullTextBuilder.append(finalText);
 
-                        // Phát các text chunks xuống SSE cho client (giả lập mượt mà)
+                        // Phát các text chunks xuống SSE cho client
                         emitTextChunks(emitter, finalText);
 
                     } else {
                         // 3. Có một hoặc nhiều Function Calls (song song)
                         log.info("[Agent Orchestrator] Nhận được {} function call(s) từ Gemini", functionCallParts.size());
 
-                        // Thêm turn phản hồi nguyên bản của Model vào contents (bảo toàn thoughtSignature, id, functionCall)
                         Map<String, Object> modelTurnBlock = new LinkedHashMap<>();
                         modelTurnBlock.put("role", "model");
 
@@ -235,9 +400,15 @@ public class AiAgentOrchestrator {
                         List<Map<String, Object>> functionResponseParts = new ArrayList<>();
 
                         for (JsonNode fc : functionCallParts) {
+                            executedToolsCount++;
                             String toolName = fc.path("name").asText("");
                             JsonNode argsNode = fc.path("args");
+                            @SuppressWarnings("unchecked")
                             Map<String, Object> args = objectMapper.convertValue(argsNode, Map.class);
+
+                            if (GeminiToolDeclarationFactory.TOOL_GET_USER_RECOMMENDATIONS.equals(toolName)) {
+                                usedPersonalTool = true;
+                            }
 
                             // Bắn sự kiện tool_status xuống client
                             sendToolStatusEvent(emitter, toolName);
@@ -272,12 +443,18 @@ public class AiAgentOrchestrator {
                             functionResponseParts.add(frWrapper);
                         }
 
-                        // Thêm turn kết quả tool (role: "user" theo chuẩn Gemini v1beta) vào contents cho iteration sau
+                        // Thêm turn kết quả tool vào contents cho iteration sau
                         Map<String, Object> functionTurnBlock = new LinkedHashMap<>();
                         functionTurnBlock.put("role", "user");
                         functionTurnBlock.put("parts", functionResponseParts);
                         contents.add(functionTurnBlock);
                     }
+                }
+
+                // Ghi nhận Breaker onSuccess nếu đang giữ permit
+                if (permitAcquired && !resultRecorded.get()) {
+                    circuitBreaker.onSuccess(System.nanoTime() - permitStartNs, TimeUnit.NANOSECONDS);
+                    resultRecorded.set(true);
                 }
 
                 // 5. Kết thúc lượt: Gửi gói tin hoàn tất (Complete Packet)
@@ -295,25 +472,39 @@ public class AiAgentOrchestrator {
                     emitter.send(SseEmitter.event().data(completeJson));
                     emitter.complete();
 
-                    log.info("[Agent Orchestrator] Hoàn tất lượt Agent: tokens={}, songs={}, playerAction={}",
-                            totalTokensHolder.get(), suggestedSongsList.size(),
-                            resolvedPlayerAction != null ? resolvedPlayerAction.getAction() : "none");
+                    log.info("[Agent Orchestrator] Hoàn tất lượt Agent: model={}, tokens={}, songs={}",
+                            currentTargetModel, totalTokensHolder.get(), suggestedSongsList.size());
 
                     if (onCompleteCallback != null) {
-                        onCompleteCallback.accept(new AgentTurnResult(
+                        onCompleteCallback.accept(AgentTurnResult.success(
                                 fullTextBuilder.toString(),
                                 totalTokensHolder.get(),
-                                MessageStatus.COMPLETE,
                                 suggestedSongsList,
                                 resolvedPlayerAction,
                                 resolvedPlaylistProposal,
-                                null
+                                currentTargetModel,
+                                usedPersonalTool,
+                                wasFallbackTriggered,
+                                degradedByBreaker
                         ));
                     }
                 }
 
             } catch (Exception e) {
                 log.error("[Agent Orchestrator] Lỗi trong vòng lặp Agent: {}", e.getMessage(), e);
+
+                if (isClientAbort(e)) {
+                    if (permitAcquired && !resultRecorded.get()) {
+                        circuitBreaker.releasePermission();
+                        resultRecorded.set(true);
+                    }
+                } else {
+                    if (permitAcquired && !resultRecorded.get()) {
+                        circuitBreaker.onError(System.nanoTime() - permitStartNs, TimeUnit.NANOSECONDS, e);
+                        resultRecorded.set(true);
+                    }
+                }
+
                 sendErrorPacket(emitter, "AI_STREAM_INTERRUPTED");
 
                 if (onCompleteCallback != null) {
@@ -324,10 +515,18 @@ public class AiAgentOrchestrator {
                             suggestedSongsList,
                             resolvedPlayerAction,
                             resolvedPlaylistProposal,
-                            e.getMessage()
+                            e.getMessage(),
+                            usedPersonalTool,
+                            wasFallbackTriggered,
+                            degradedByBreaker,
+                            currentTargetModel
                     ));
                 }
             } finally {
+                if (permitAcquired && !resultRecorded.get()) {
+                    circuitBreaker.releasePermission();
+                    resultRecorded.set(true);
+                }
                 isFinished.set(true);
                 if (heartbeatScheduler != null) {
                     heartbeatScheduler.shutdownNow();
@@ -337,6 +536,46 @@ public class AiAgentOrchestrator {
                 }
             }
         });
+    }
+
+    private String callWithWatchdog(String endpoint, String requestJson, long timeoutMs) throws Exception {
+        if (geminiRestClient == null) {
+            return null;
+        }
+
+        CompletableFuture<String> future = CompletableFuture.supplyAsync(() ->
+                geminiRestClient.post()
+                        .uri(endpoint)
+                        .header("x-goog-api-key", apiKey)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .body(requestJson)
+                        .retrieve()
+                        .body(String.class)
+        );
+
+        try {
+            return future.get(timeoutMs, TimeUnit.MILLISECONDS);
+        } catch (TimeoutException te) {
+            future.cancel(true);
+            throw new FirstTokenTimeoutException("Watchdog timeout sau " + timeoutMs + "ms không nhận được phản hồi", te);
+        } catch (ExecutionException ee) {
+            Throwable cause = ee.getCause();
+            if (cause instanceof Exception ex) {
+                throw ex;
+            }
+            throw new RuntimeException(cause);
+        }
+    }
+
+    private boolean isClientAbort(Throwable t) {
+        while (t != null) {
+            String className = t.getClass().getName();
+            if (className.contains("ClientAbortException") || className.contains("AsyncRequestNotUsableException")) {
+                return true;
+            }
+            t = t.getCause();
+        }
+        return false;
     }
 
     private void sendToolStatusEvent(SseEmitter emitter, String toolName) {
@@ -349,7 +588,7 @@ public class AiAgentOrchestrator {
             );
             emitter.send(SseEmitter.event().data(objectMapper.writeValueAsString(statusPacket)));
         } catch (Exception e) {
-            log.debug("[Agent Orchestrator] Không thể gửi tool_status (client có thể đã đóng kết nối): {}", e.getMessage());
+            log.debug("[Agent Orchestrator] Không thể gửi tool_status: {}", e.getMessage());
         }
     }
 
@@ -368,7 +607,6 @@ public class AiAgentOrchestrator {
         if (text == null || text.isEmpty()) return;
 
         try {
-            // Chia nhỏ text thành các đoạn (chunks) khoảng 20-30 ký tự để client hiển thị hiệu ứng gõ mượt mà
             int chunkSize = 25;
             for (int i = 0; i < text.length(); i += chunkSize) {
                 int end = Math.min(i + chunkSize, text.length());

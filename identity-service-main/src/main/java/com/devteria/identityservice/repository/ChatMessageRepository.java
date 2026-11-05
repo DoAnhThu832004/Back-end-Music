@@ -13,14 +13,18 @@ import java.util.List;
 
 @Repository
 public interface ChatMessageRepository extends JpaRepository<ChatMessage, String> {
+    boolean existsBySessionId(String sessionId);
+
     List<ChatMessage> findBySessionOrderByCreatedAtAsc(ChatSession session);
+
+    List<ChatMessage> findBySessionOrderByCreatedAtAscSenderDesc(ChatSession session);
 
     @Query("SELECT m FROM ChatMessage m WHERE m.session.id = :sessionId ORDER BY m.createdAt DESC")
     List<ChatMessage> findRecentMessagesBySessionId(@Param("sessionId") String sessionId);
 
     List<ChatMessage> findTop10BySessionAndStatusOrderByCreatedAtDesc(ChatSession session, MessageStatus status);
 
-    @Query("SELECT m FROM ChatMessage m WHERE m.session.id = :sessionId AND m.status = :status ORDER BY m.createdAt DESC")
+    @Query("SELECT m FROM ChatMessage m WHERE m.session.id = :sessionId AND m.status = :status ORDER BY m.createdAt DESC, m.sender ASC")
     List<ChatMessage> findRecentMessagesBySessionIdAndStatus(
             @Param("sessionId") String sessionId,
             @Param("status") MessageStatus status,

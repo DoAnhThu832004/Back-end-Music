@@ -27,7 +27,8 @@ public enum ErrorCode {
     USER_BLOCKED(1011, "Your account has been blocked by admin", HttpStatus.FORBIDDEN),
     SESSION_NOT_EXISTED(2008, "Chat session not existed", HttpStatus.NOT_FOUND),
     AI_RATE_LIMIT_EXCEEDED(3001, "AI request rate limit exceeded", HttpStatus.TOO_MANY_REQUESTS),
-    AI_SESSION_BUSY(3002, "Another AI stream is in progress for this session", HttpStatus.CONFLICT)
+    AI_SESSION_BUSY(3002, "Another AI stream is in progress for this session", HttpStatus.CONFLICT),
+    AI_SERVER_BUSY(3003, "AI service is currently busy or degraded", HttpStatus.SERVICE_UNAVAILABLE)
     ;
 
     ErrorCode(int code, String message, HttpStatusCode statusCode) {
