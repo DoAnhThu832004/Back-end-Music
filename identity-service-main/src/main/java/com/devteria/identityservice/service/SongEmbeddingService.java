@@ -218,10 +218,9 @@ public class SongEmbeddingService {
             throw new IllegalStateException("Vector rỗng, từ chối lưu để bảo vệ tính toàn vẹn của cache");
         }
 
-        SongEmbedding embedding = songEmbeddingRepository.findBySongId(p.songId())
+        SongEmbedding embedding = songEmbeddingRepository.findById(p.songId())
                 .orElseGet(() -> SongEmbedding.builder()
                         .songId(p.songId())
-                        .song(songRepository.getReferenceById(p.songId()))
                         .build());
 
         embedding.setSearchText(p.searchText());

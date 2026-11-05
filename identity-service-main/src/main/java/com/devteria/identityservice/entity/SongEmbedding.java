@@ -21,8 +21,7 @@ public class SongEmbedding {
     private String songId;
 
     @OneToOne(fetch = FetchType.LAZY)
-    @MapsId
-    @JoinColumn(name = "song_id")
+    @JoinColumn(name = "song_id", insertable = false, updatable = false)
     private Song song;
 
     @Column(name = "search_text", columnDefinition = "TEXT", nullable = false)

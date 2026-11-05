@@ -165,7 +165,7 @@ class SongEmbeddingServiceTest {
         when(requestBodySpec.retrieve()).thenReturn(responseSpec);
         when(responseSpec.body(String.class)).thenReturn("{\"embedding\":{\"values\":[0.1,0.2,0.3]}}");
 
-        when(songEmbeddingRepository.findBySongId("test-song-id")).thenReturn(Optional.empty());
+        when(songEmbeddingRepository.findById("test-song-id")).thenReturn(Optional.empty());
         when(songEmbeddingRepository.save(any(SongEmbedding.class))).thenAnswer(invocation -> invocation.getArgument(0));
 
         SongEmbedding result = songEmbeddingService.syncSongEmbedding(song);
