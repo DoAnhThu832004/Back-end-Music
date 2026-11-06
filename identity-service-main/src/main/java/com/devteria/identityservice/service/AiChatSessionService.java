@@ -140,6 +140,12 @@ public class AiChatSessionService {
         });
     }
 
+    @Transactional
+    public void saveFastPathMessages(ChatMessage userMessage, ChatMessage aiMessage) {
+        chatMessageRepository.save(userMessage);
+        chatMessageRepository.save(aiMessage);
+    }
+
     public ChatSessionResponse toSessionResponse(ChatSession session) {
         return ChatSessionResponse.builder()
                 .id(session.getId())

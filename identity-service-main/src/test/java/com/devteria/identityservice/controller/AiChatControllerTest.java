@@ -186,8 +186,8 @@ class AiChatControllerTest {
         SseEmitter emitter = aiChatController.streamChat(request);
 
         assertThat(emitter).isNotNull();
-        // Lưu tin nhắn USER và AI (2 lần)
-        verify(chatMessageRepository, times(2)).save(any(ChatMessage.class));
+        // Lưu nguyên tử tin nhắn USER và AI trong cùng 1 Transaction
+        verify(aiChatSessionService, times(1)).saveFastPathMessages(any(ChatMessage.class), any(ChatMessage.class));
         // Cập nhật tiêu đề session
         verify(aiChatSessionService, times(1)).updateSessionTitleIfDefault("session-1", "Xin chào");
         // Tuyệt đối không lock session
@@ -250,8 +250,8 @@ class AiChatControllerTest {
         SseEmitter emitter = aiChatController.streamChat(request);
 
         assertThat(emitter).isNotNull();
-        // Lưu tin nhắn USER và AI
-        verify(chatMessageRepository, times(2)).save(any(ChatMessage.class));
+        // Lưu nguyên tử tin nhắn USER và AI trong cùng 1 Transaction
+        verify(aiChatSessionService, times(1)).saveFastPathMessages(any(ChatMessage.class), any(ChatMessage.class));
         // Không khóa session lock
         verify(aiChatGuardService, never()).checkAndLockSession(any());
         // Không gọi orchestrator

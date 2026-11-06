@@ -55,10 +55,9 @@ resilience4j:
         wait-duration-in-open-state: 30s
         permitted-number-of-calls-in-half-open-state: 2
         record-exceptions:
-          - org.springframework.web.client.HttpClientErrorException$TooManyRequests
-          - org.springframework.web.client.HttpServerErrorException
+          - com.devteria.identityservice.exception.UpstreamAiException
+          - org.springframework.web.client.RestClientResponseException
           - org.springframework.web.client.ResourceAccessException
-          - com.devteria.identityservice.exception.FirstTokenTimeoutException
         ignore-exceptions:
           - org.apache.catalina.connector.ClientAbortException
           - org.springframework.web.context.request.async.AsyncRequestNotUsableException

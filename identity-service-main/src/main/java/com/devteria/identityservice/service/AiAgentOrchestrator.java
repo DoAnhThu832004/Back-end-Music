@@ -8,6 +8,7 @@ import com.devteria.identityservice.enums.AiPersona;
 import com.devteria.identityservice.enums.MessageStatus;
 import com.devteria.identityservice.enums.ModelTier;
 import com.devteria.identityservice.exception.FirstTokenTimeoutException;
+import com.devteria.identityservice.exception.UpstreamAiException;
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -54,6 +55,8 @@ public class AiAgentOrchestrator {
     private final AiRouterProperties routerProperties;
     private final CircuitBreakerRegistry circuitBreakerRegistry;
     private final MeterRegistry meterRegistry;
+    private final CanCacheEvaluator canCacheEvaluator;
+    private final TelemetryService telemetryService;
 
     @Value("${gemini.api-key:}")
     private String apiKey;
@@ -136,7 +139,6 @@ public class AiAgentOrchestrator {
         );
     }
 
-    @Autowired
     public AiAgentOrchestrator(
             @Qualifier("geminiRestClient") RestClient geminiRestClient,
             @Qualifier("geminiStreamRestClient") RestClient geminiStreamRestClient,
@@ -149,6 +151,38 @@ public class AiAgentOrchestrator {
             AiRouterProperties routerProperties,
             CircuitBreakerRegistry circuitBreakerRegistry,
             @Autowired(required = false) MeterRegistry meterRegistry) {
+        this(
+                geminiRestClient,
+                geminiStreamRestClient,
+                objectMapper,
+                toolDeclarationFactory,
+                musicToolExecutor,
+                aiStreamingExecutor,
+                aiStreamingSemaphore,
+                modelRouterService,
+                routerProperties,
+                circuitBreakerRegistry,
+                meterRegistry,
+                new CanCacheEvaluator(),
+                new TelemetryService(meterRegistry)
+        );
+    }
+
+    @Autowired
+    public AiAgentOrchestrator(
+            @Qualifier("geminiRestClient") RestClient geminiRestClient,
+            @Qualifier("geminiStreamRestClient") RestClient geminiStreamRestClient,
+            ObjectMapper objectMapper,
+            GeminiToolDeclarationFactory toolDeclarationFactory,
+            MusicToolExecutor musicToolExecutor,
+            @Qualifier("aiStreamingExecutor") ExecutorService aiStreamingExecutor,
+            @Qualifier("aiStreamingSemaphore") Semaphore aiStreamingSemaphore,
+            ModelRouterService modelRouterService,
+            AiRouterProperties routerProperties,
+            CircuitBreakerRegistry circuitBreakerRegistry,
+            @Autowired(required = false) MeterRegistry meterRegistry,
+            @Autowired(required = false) CanCacheEvaluator canCacheEvaluator,
+            @Autowired(required = false) TelemetryService telemetryService) {
         this.geminiRestClient = geminiRestClient;
         this.geminiStreamRestClient = geminiStreamRestClient != null ? geminiStreamRestClient : geminiRestClient;
         this.objectMapper = objectMapper;
@@ -160,6 +194,8 @@ public class AiAgentOrchestrator {
         this.routerProperties = routerProperties != null ? routerProperties : new AiRouterProperties();
         this.circuitBreakerRegistry = circuitBreakerRegistry != null ? circuitBreakerRegistry : CircuitBreakerRegistry.ofDefaults();
         this.meterRegistry = meterRegistry;
+        this.canCacheEvaluator = canCacheEvaluator != null ? canCacheEvaluator : new CanCacheEvaluator();
+        this.telemetryService = telemetryService != null ? telemetryService : new TelemetryService(meterRegistry);
     }
 
     /**
@@ -204,12 +240,26 @@ public class AiAgentOrchestrator {
             ScheduledExecutorService heartbeatScheduler = null;
             AtomicBoolean isFinished = new AtomicBoolean(false);
 
+            // 0. Đánh giá khả năng Cache & Ghi nhận Telemetry (Bước đệm Giai đoạn 3)
+            CacheEvaluationResult cacheEvalResult = null;
+            if (canCacheEvaluator != null) {
+                try {
+                    cacheEvalResult = canCacheEvaluator.evaluate(userRawPrompt, currentSongId, hasPriorHistory);
+                    if (telemetryService != null) {
+                        telemetryService.recordPromptTelemetry(currentUsername, userRawPrompt, cacheEvalResult);
+                    }
+                } catch (Exception e) {
+                    log.warn("[Agent Orchestrator] Fail-safe: Lỗi khi đánh giá Cache / Telemetry: {}", e.getMessage());
+                }
+            }
+
             // 1. Phân làn mô hình (Routing Decision)
             RoutingDecision routingDecision = modelRouterService.resolveDecision(userRawPrompt, currentPersona);
             String currentTargetModel = routingDecision.targetModel();
             boolean degradedByBreaker = routingDecision.degradedByBreaker();
             boolean wasFallbackTriggered = false;
             boolean usedPersonalTool = false;
+            boolean hasSideEffectToolExecuted = false;
             int executedToolsCount = 0;
 
             // 2. Quản lý Permit cho Reasoning Tier
@@ -306,14 +356,18 @@ public class AiAgentOrchestrator {
                             throw callEx;
                         }
 
-                        // Lỗi upstream: ghi nhận vào Breaker nếu đang giữ permit
+                        // Bọc lỗi upstream vào UpstreamAiException để đảm bảo Resilience4j record-exceptions ghi nhận
+                        UpstreamAiException upstreamEx = (callEx instanceof UpstreamAiException u)
+                                ? u
+                                : new UpstreamAiException("Lỗi giao tiếp upstream Gemini: " + callEx.getMessage(), callEx);
+
                         if (permitAcquired && !resultRecorded.get()) {
-                            circuitBreaker.onError(System.nanoTime() - permitStartNs, TimeUnit.NANOSECONDS, callEx);
+                            circuitBreaker.onError(System.nanoTime() - permitStartNs, TimeUnit.NANOSECONDS, upstreamEx);
                             resultRecorded.set(true);
                         }
 
-                        // Fallback logic
-                        if (executedToolsCount == 0 && !wasFallbackTriggered && routingDecision.tier() == ModelTier.REASONING_TIER) {
+                        // Fallback logic: Cho phép fallback khi chưa có công cụ side-effect (player/playlist) nào thực thi
+                        if (!hasSideEffectToolExecuted && !wasFallbackTriggered && routingDecision.tier() == ModelTier.REASONING_TIER) {
                             log.warn("[Agent Orchestrator] Kích hoạt Fallback từ {} sang {}", currentTargetModel, routerProperties.getFastTierModel());
                             wasFallbackTriggered = true;
                             String fromModel = currentTargetModel;
@@ -325,15 +379,15 @@ public class AiAgentOrchestrator {
                             endpoint = "/models/" + currentTargetModel + ":generateContent";
                             responseJson = callWithWatchdog(endpoint, requestJson, routerProperties.getFirstTokenTimeoutMs());
                         } else {
-                            if (executedToolsCount > 0) {
-                                log.error("[Agent Orchestrator] executedToolsCount = {}, CẤM fallback sang mô hình khác. Dừng an toàn với AI_SERVER_BUSY.", executedToolsCount);
+                            if (hasSideEffectToolExecuted) {
+                                log.error("[Agent Orchestrator] Công cụ side-effect (player/playlist) đã thực thi, CẤM fallback sang mô hình khác. Dừng an toàn với AI_SERVER_BUSY.");
                                 sendErrorPacket(emitter, "AI_SERVER_BUSY");
                                 if (onCompleteCallback != null) {
                                     onCompleteCallback.accept(AgentTurnResult.failed("AI_SERVER_BUSY"));
                                 }
                                 return;
                             }
-                            throw callEx;
+                            throw upstreamEx;
                         }
                     }
 
@@ -405,6 +459,11 @@ public class AiAgentOrchestrator {
                             JsonNode argsNode = fc.path("args");
                             @SuppressWarnings("unchecked")
                             Map<String, Object> args = objectMapper.convertValue(argsNode, Map.class);
+
+                            if (GeminiToolDeclarationFactory.TOOL_TRIGGER_PLAYER_ACTION.equals(toolName)
+                                    || GeminiToolDeclarationFactory.TOOL_PROPOSE_AI_PLAYLIST.equals(toolName)) {
+                                hasSideEffectToolExecuted = true;
+                            }
 
                             if (GeminiToolDeclarationFactory.TOOL_GET_USER_RECOMMENDATIONS.equals(toolName)) {
                                 usedPersonalTool = true;
@@ -500,7 +559,10 @@ public class AiAgentOrchestrator {
                     }
                 } else {
                     if (permitAcquired && !resultRecorded.get()) {
-                        circuitBreaker.onError(System.nanoTime() - permitStartNs, TimeUnit.NANOSECONDS, e);
+                        UpstreamAiException upstreamEx = (e instanceof UpstreamAiException u)
+                                ? u
+                                : new UpstreamAiException("Lỗi giao tiếp upstream Gemini: " + e.getMessage(), e);
+                        circuitBreaker.onError(System.nanoTime() - permitStartNs, TimeUnit.NANOSECONDS, upstreamEx);
                         resultRecorded.set(true);
                     }
                 }

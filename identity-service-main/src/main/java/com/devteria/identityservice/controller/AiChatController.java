@@ -246,7 +246,6 @@ public class AiChatController {
                 .tokenCount(0)
                 .build();
         userMessage.setCreatedAt(userTimestamp);
-        chatMessageRepository.save(userMessage);
 
         // 3. Lưu tin nhắn AI Fast-Path vào DB với timestamp T1 + 5ms (đảm bảo thứ tự thời gian phân định)
         ChatMessage aiMessage = ChatMessage.builder()
@@ -258,7 +257,9 @@ public class AiChatController {
                 .tokenCount(0)
                 .build();
         aiMessage.setCreatedAt(userTimestamp.plus(5, ChronoUnit.MILLIS));
-        chatMessageRepository.save(aiMessage);
+
+        // Lưu đồng thời cả 2 tin nhắn trong cùng 1 Transaction nguyên tử
+        aiChatSessionService.saveFastPathMessages(userMessage, aiMessage);
 
         // 4. Khởi tạo Emitter riêng cho Fast-Path: KHÔNG đăng ký releaseSessionLock
         SseEmitter fastEmitter = new SseEmitter(10_000L);

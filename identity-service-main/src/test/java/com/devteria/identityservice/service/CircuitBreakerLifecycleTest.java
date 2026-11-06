@@ -6,6 +6,7 @@ import com.devteria.identityservice.enums.AiPersona;
 import com.devteria.identityservice.enums.MessageStatus;
 import com.devteria.identityservice.enums.ModelTier;
 import com.devteria.identityservice.exception.FirstTokenTimeoutException;
+import com.devteria.identityservice.exception.UpstreamAiException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import io.github.resilience4j.circuitbreaker.CircuitBreaker;
 import io.github.resilience4j.circuitbreaker.CircuitBreakerConfig;
@@ -22,7 +23,9 @@ import org.springframework.http.MediaType;
 import org.springframework.test.util.ReflectionTestUtils;
 import org.springframework.web.client.HttpClientErrorException;
 import org.springframework.web.client.HttpServerErrorException;
+import org.springframework.web.client.ResourceAccessException;
 import org.springframework.web.client.RestClient;
+import org.springframework.web.client.RestClientResponseException;
 import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
 
 import java.time.Duration;
@@ -87,9 +90,9 @@ class CircuitBreakerLifecycleTest {
                 .failureRateThreshold(50.0f)
                 .waitDurationInOpenState(Duration.ofSeconds(10))
                 .recordExceptions(
-                        HttpServerErrorException.class,
-                        HttpClientErrorException.TooManyRequests.class,
-                        FirstTokenTimeoutException.class
+                        UpstreamAiException.class,
+                        RestClientResponseException.class,
+                        ResourceAccessException.class
                 )
                 .ignoreExceptions(ClientAbortException.class)
                 .build();
@@ -139,6 +142,10 @@ class CircuitBreakerLifecycleTest {
         return "{\"candidates\":[{\"content\":{\"parts\":[{\"functionCall\":{\"name\":\"" + toolName + "\",\"args\":{\"query\":\"" + query + "\"}}}]}}]}";
     }
 
+    private String createPlayerActionToolJson(String action, String songId) {
+        return "{\"candidates\":[{\"content\":{\"parts\":[{\"functionCall\":{\"name\":\"trigger_player_action\",\"args\":{\"action\":\"" + action + "\",\"song_id\":\"" + songId + "\"}}}]}}]}";
+    }
+
     @Test
     @DisplayName("Kịch bản 1: ClientAbortException giải phóng permit, không ghi nhận lỗi vào Breaker")
     void testClientAbort_ReleasesPermit_DoesNotRecordErrorOnBreaker() throws Exception {
@@ -181,7 +188,7 @@ class CircuitBreakerLifecycleTest {
     }
 
     @Test
-    @DisplayName("Kịch bản 2: Lỗi upstream (500) khi executedToolsCount == 0 -> Ghi nhận lỗi và Fallback sang Flash thành công")
+    @DisplayName("Kịch bản 2: Lỗi upstream (500) khi chưa chạy tool -> Ghi nhận lỗi và Fallback sang Flash thành công")
     void testUpstreamError_ExecutedToolsCountZero_RecordsErrorAndFallsBackToFlash() throws Exception {
         ExecutorService directExecutor = Executors.newCachedThreadPool();
         AiAgentOrchestrator orchestrator = createOrchestrator(directExecutor);
@@ -227,18 +234,18 @@ class CircuitBreakerLifecycleTest {
     }
 
     @Test
-    @DisplayName("Kịch bản 3: Lỗi upstream khi executedToolsCount > 0 -> CẤM Fallback, trả về AI_SERVER_BUSY")
-    void testUpstreamError_ExecutedToolsCountGreaterThanZero_BlocksFallbackAndReturnsBusy() throws Exception {
+    @DisplayName("Kịch bản 3A: Tool có tác dụng phụ (trigger_player_action) đã chạy -> CẤM Fallback, dừng với AI_SERVER_BUSY")
+    void testUpstreamError_SideEffectToolExecuted_BlocksFallbackAndReturnsBusy() throws Exception {
         ExecutorService directExecutor = Executors.newCachedThreadPool();
         AiAgentOrchestrator orchestrator = createOrchestrator(directExecutor);
 
-        // Iteration 1: Gọi Tool thành công (executedToolsCount = 1)
+        // Iteration 1: Gọi Tool phát nhạc có tác dụng phụ (hasSideEffectToolExecuted = true)
         // Iteration 2: Upstream trả lỗi 500
         when(mockResponseSpec.body(String.class))
-                .thenReturn(createToolCallJson(GeminiToolDeclarationFactory.TOOL_SEARCH_MUSIC_LIBRARY, "nhạc Trịnh"))
+                .thenReturn(createPlayerActionToolJson("PLAY", "song-1"))
                 .thenThrow(new HttpServerErrorException(HttpStatus.INTERNAL_SERVER_ERROR, "Gemini internal error"));
 
-        String criticPrompt = "Xin hãy phân tích hòa âm và phong cách bài hát này sau khi tìm kiếm";
+        String criticPrompt = "Xin hãy phân tích hòa âm và bật phát bài hát này lên cho tôi nghe thử";
         CountDownLatch latch = new CountDownLatch(1);
         AtomicReference<AiAgentOrchestrator.AgentTurnResult> resultRef = new AtomicReference<>();
 
@@ -262,8 +269,52 @@ class CircuitBreakerLifecycleTest {
         AiAgentOrchestrator.AgentTurnResult result = resultRef.get();
         assertNotNull(result);
         assertEquals(MessageStatus.FAILED, result.status());
-        assertEquals("AI_SERVER_BUSY", result.errorMessage(), "Cấm fallback khi tool đã chạy; phải trả về AI_SERVER_BUSY");
+        assertEquals("AI_SERVER_BUSY", result.errorMessage(), "Cấm fallback khi tool side-effect đã chạy; phải trả về AI_SERVER_BUSY");
         assertFalse(result.wasFallbackTriggered());
+
+        directExecutor.shutdown();
+    }
+
+    @Test
+    @DisplayName("Kịch bản 3B: Tool chỉ đọc (search_music_library) đã chạy -> CHO PHÉP Fallback sang Flash an toàn")
+    void testUpstreamError_ReadOnlyToolExecuted_AllowsFallbackToFlash() throws Exception {
+        ExecutorService directExecutor = Executors.newCachedThreadPool();
+        AiAgentOrchestrator orchestrator = createOrchestrator(directExecutor);
+
+        // Iteration 1: Gọi Tool tìm kiếm chỉ đọc (hasSideEffectToolExecuted = false)
+        // Iteration 2 (Pro): Lỗi 500
+        // Iteration 2 (Flash Fallback): Thành công sinh câu trả lời
+        when(mockResponseSpec.body(String.class))
+                .thenReturn(createToolCallJson(GeminiToolDeclarationFactory.TOOL_SEARCH_MUSIC_LIBRARY, "nhạc Trịnh"))
+                .thenThrow(new HttpServerErrorException(HttpStatus.INTERNAL_SERVER_ERROR, "Gemini internal error"))
+                .thenReturn(createTextResponseJson("Đã phân tích phong cách nhạc Trịnh từ Flash"));
+
+        String criticPrompt = "Xin hãy phân tích hòa âm và phong cách bài hát sau khi tìm kiếm";
+        CountDownLatch latch = new CountDownLatch(1);
+        AtomicReference<AiAgentOrchestrator.AgentTurnResult> resultRef = new AtomicReference<>();
+
+        SseEmitter emitter = new SseEmitter(10_000L);
+        orchestrator.orchestrateTurn(
+                "testuser",
+                criticPrompt,
+                List.of(Map.of("role", "user", "parts", List.of(Map.of("text", criticPrompt)))),
+                "System prompt",
+                AiPersona.MUSIC_CRITIC,
+                null,
+                false,
+                emitter,
+                turnResult -> {
+                    resultRef.set(turnResult);
+                    latch.countDown();
+                }
+        );
+
+        assertTrue(latch.await(3, TimeUnit.SECONDS));
+        AiAgentOrchestrator.AgentTurnResult result = resultRef.get();
+        assertNotNull(result);
+        assertEquals(MessageStatus.COMPLETE, result.status());
+        assertTrue(result.wasFallbackTriggered(), "Cho phép fallback sang Flash vì tool tìm kiếm chỉ đọc");
+        assertEquals("gemini-3.5-flash-lite", result.actualModelUsed());
 
         directExecutor.shutdown();
     }
@@ -345,7 +396,7 @@ class CircuitBreakerLifecycleTest {
         assertTrue(result.wasFallbackTriggered());
         assertEquals("gemini-3.5-flash-lite", result.actualModelUsed());
 
-        // Breaker ghi nhận 1 failed call do FirstTokenTimeoutException
+        // Breaker ghi nhận 1 failed call do FirstTokenTimeoutException (kế thừa UpstreamAiException)
         assertEquals(1, circuitBreaker.getMetrics().getNumberOfFailedCalls());
 
         asyncExecutor.shutdown();
