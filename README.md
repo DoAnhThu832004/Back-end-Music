@@ -17,14 +17,16 @@ Backend RESTful API hoàn chỉnh cho nền tảng **Phát nhạc trực tuyến
 ## 📑 Mục lục
 - [1. Tính Năng Nổi Bật](#-1-tính-năng-nổi-bật)
 - [2. Kiến Trúc Hệ Thống Gợi Ý (Recommendation Architecture)](#-2-kiến-trúc-hệ-thống-gợi-ý-recommendation-architecture)
-- [3. Công Nghệ Sử Dụng (Tech Stack)](#-3-công-nghệ-sử-dụng-tech-stack)
-- [4. Cấu Trúc Thư Mục (Project Structure)](#-4-cấu-trúc-thư-mục-project-structure)
-- [5. Yêu Cầu Hệ Thống & Cài Đặt (Prerequisites & Installation)](#-5-yêu-cầu-hệ-thống--cài-đặt-prerequisites--installation)
-- [6. Cấu Hình Ứng Dụng (Configuration)](#-6-cấu-hình-ứng-dụng-configuration)
-- [7. Hướng Dẫn Khởi Chạy (How to Run)](#-7-hướng-dẫn-khởi-chạy-how-to-run)
-- [8. Tài Liệu REST API (API Endpoints Reference)](#-8-tài-liệu-rest-api-api-endpoints-reference)
-- [9. Định Dạng Phản Hồi Chuẩn (API Response Format)](#-9-định-dạng-phản-hồi-chuẩn-api-response-format)
-- [10. Kiểm Thử Với Postman (Postman Collection)](#-10-kiểm-thử-với-postman-postman-collection)
+- [3. Kiến Trúc Trợ Lý AI 7 Lớp (Agentic AI Companion Architecture)](#-3-kiến-trúc-trợ-lý-ai-7-lớp-agentic-ai-companion-architecture)
+- [4. Công Nghệ Sử Dụng (Tech Stack)](#-4-công-nghệ-sử-dụng-tech-stack)
+- [5. Cấu Trúc Thư Mục (Project Structure)](#-5-cấu-trúc-thư-mục-project-structure)
+- [6. Yêu Cầu Hệ Thống & Cài Đặt (Prerequisites & Installation)](#-6-yêu-cầu-hệ-thống--cài-đặt-prerequisites--installation)
+- [7. Cấu Hình Ứng Dụng (Configuration)](#-7-cấu-hình-ứng-dụng-configuration)
+- [8. Hướng Dẫn Khởi Chạy (How to Run)](#-8-hướng-dẫn-khởi-chạy-how-to-run)
+- [9. Tài Khoản & Phân Quyền Mặc Định](#-9-tài-khoản--phân-quyền-mặc-định)
+- [10. Tài Liệu REST API (API Endpoints Reference)](#-10-danh-sách-rest-api-chi-tiết-api-endpoints-reference)
+- [11. Định Dạng Phản Hồi Chuẩn (API Response Format)](#-11-định-dạng-phản-hồi-chuẩn-api-response-format)
+- [12. Kiểm Thử Với Postman (Postman Collection)](#-12-kiểm-thử-với-postman-postman-collection)
 
 ---
 
@@ -55,6 +57,21 @@ Backend RESTful API hoàn chỉnh cho nền tảng **Phát nhạc trực tuyến
 - Khắc phục bài toán **Cold Start** cho người dùng mới qua thể loại yêu thích và Global Trending.
 - Đa dạng hóa danh sách gợi ý bằng thuật toán **MMR (Maximal Marginal Relevance) Re-ranking** ($\lambda = 0.7$).
 - Tích hợp **Recency Decay** (ưu tiên hành vi gần) & **Follower Boost** (tăng trọng số bài hát của nghệ sĩ đang follow).
+
+### 🤖 Trợ Lý Âm Nhạc AI Đa Tầng (Agentic AI Music Companion - Google Gemini)
+- **Kiến trúc Phòng thủ 7 Lớp Chuyên sâu**:
+  1. *Lớp 1 (Model + API)*: Tích hợp Google Gemini 3.5 Flash-Lite & 2.5 Pro qua REST client, xử lý luồng Streaming SSE song song bằng Java 21 Virtual Threads.
+  2. *Lớp 2 (System Prompt & Persona)*: 3 Persona độc đáo (`GENZ_DJ`, `MUSIC_CRITIC`, `HEALING_BUDDY`), am hiểu phong cách âm nhạc và văn hóa nghe nhạc Việt Nam.
+  3. *Lớp 3 (RAG & Hybrid Search)*: Vector Embeddings 768 chiều (`gemini-embedding-001`), tính toán độ tương đồng Cosine kết hợp lọc từ khóa và thể loại.
+  4. *Lớp 4 (Multi-Step Agent Loop)*: Function Calling với các công cụ âm nhạc thật (`trigger_player_action`, `propose_ai_playlist`, `search_music_library`), cơ chế Anti-Hallucination bảo vệ tính toàn vẹn của catalog.
+  5. *Lớp 5 (Phân quyền & RBAC)*: Xác thực JWT, chống IDOR, cô lập phiên chat cá nhân.
+  6. *Lớp 6 (Guardrails)*: Concurrency Session Lock, Rate Limiting (10 req/phút), kiểm duyệt nội dung độc hại am hiểu tiếng lóng Gen Z.
+  7. *Lớp 7 (Cache & Model Router)*:
+     - **Fast-Path Engine (< 10ms)**: Khớp lệnh chào hỏi và player transport (`PAUSE`, `RESUME`, `NEXT`) chạy trước Session Lock, đồng bộ với Android Client.
+     - **Dynamic Model Router**: Phân làn tự động giữa Fast Tier (`gemini-3.5-flash-lite`) và Reasoning Tier (`gemini-2.5-pro`).
+     - **Resilience4j Circuit Breaker & First-Token Watchdog (8000ms)**: Tự động ngắt mạch khi upstream gặp sự cố, tự phục hồi sau 30s; cơ chế fallback an toàn phân biệt read-only vs side-effect tools.
+     - **CanCacheEvaluator & Telemetry Service**: 8 cổng kiểm định bypass, bộ đếm Caffeine 50k TTL 30m, phân biệt lặp liên người dùng vs tự thử lại, Khung Quyết Định Dựa Trên Dữ Liệu tiến tới 100% Production-Ready.
+- **Bộ Kiểm Thử Toàn Diện**: 90/90 Unit & Integration Tests đạt tỷ lệ vượt qua 100% (`FastPathEngineTest`, `AiChatControllerTest`, `ModelRouterServiceTest`, `CircuitBreakerLifecycleTest`, `AiAgentOrchestratorTest`, `CanCacheEvaluatorTest`, `TelemetryServiceTest`).
 
 ---
 
@@ -102,15 +119,53 @@ flowchart TD
 
 ---
 
-## 🛠 3. Công Nghệ Sử Dụng (Tech Stack)
+## 🤖 3. Kiến Trúc Trợ Lý AI 7 Lớp (Agentic AI Companion Architecture)
+
+Hệ thống trợ lý ảo âm nhạc được thiết kế theo mô hình **Phòng thủ Đa tầng (Defense-in-Depth)** 7 lớp, kết hợp giữa mô hình ngôn ngữ lớn Google Gemini, quy chuẩn bảo mật doanh nghiệp và hạ tầng bộ nhớ đệm / định tuyến thông minh:
+
+```mermaid
+flowchart TD
+    User(["👤 Người dùng (Android Client / Web)"]) --> Auth["🔐 Lớp 5: Phân Quyền & Chống IDOR (JWT)"]
+    
+    Auth --> FastPath{"⚡ Lớp 7: Fast-Path Engine<br/>(< 10ms, Chào hỏi & Player Actions)"}
+    
+    FastPath -- "Khớp lệnh" --> FastRet["🚀 Stream SSE phản hồi tức thì<br/>(Bỏ qua Session Lock & LLM)"]
+    FastRet --> User
+    
+    FastPath -- "Không khớp" --> Lock["🛡️ Lớp 6: Session Concurrency Lock & Rate Limit"]
+    
+    Lock --> Telemetry["📊 Lớp 7: Can-Cache Evaluator & Telemetry<br/>(8 Cổng Bypass, Caffeine 50k TTL 30m)"]
+    
+    Telemetry --> Router["🔀 Lớp 7: Dynamic Model Router<br/>(Fast Tier vs Reasoning Tier + Resilience4j)"]
+    
+    Router --> Orchestrator["🧠 Lớp 4: Agent Orchestrator<br/>(Multi-Step Tool Execution Loop)"]
+    
+    Orchestrator --> Tools["⚙️ Lớp 4: Music Tools<br/>(Player Action / Playlist Proposal / Library Search)"]
+    Tools --> Orchestrator
+    
+    Orchestrator --> Gemini["⚡ Lớp 1: Google Gemini API<br/>(gemini-3.5-flash-lite / gemini-2.5-pro)"]
+    
+    Gemini --> Moderation["🛡️ Lớp 6: Kiểm Duyệt Nội Dung (Tiếng Lóng Gen Z)"]
+    Moderation --> User
+```
+
+Chi tiết cẩm nang kiến trúc 7 lớp xem tại [KIEN_TRUC_AI_6_LOP.md](KIEN_TRUC_AI_6_LOP.md) và bản đặc tả chi tiết Lớp 7 tại [THIET_KE_CHI_TIET_LOP_7_CACHE_ROUTER.md](THIET_KE_CHI_TIET_LOP_7_CACHE_ROUTER.md).
+
+---
+
+## 🛠 4. Công Nghệ Sử Dụng (Tech Stack)
 
 | Thành phần | Công nghệ / Thư viện | Phiên bản | Mô tả |
 |---|---|---|---|
 | **Ngôn ngữ** | Java | 21 (LTS) | Phiên bản Java hiệu năng cao, Virtual Threads sẵn sàng |
 | **Framework chính** | Spring Boot | 3.2.2 | Core framework, Spring Web MVC, Scheduled Jobs |
 | **Bảo mật** | Spring Security, Nimbus JOSE+JWT | 6.x | OAuth2 Resource Server, Stateless JWT Authentication |
-| **Cơ sở dữ liệu** | MySQL | 8.0+ | Hệ quản trị cơ sở dữ liệu quan hệ chính |
-| **ORM / Data Access**| Spring Data JPA, Hibernate | 3.2.2 | Ánh xạ thực thể, Auditing, Custom Native Queries |
+| **Mô hình Ngôn ngữ AI** | Google Gemini (REST API) | 3.5 Flash-Lite / 2.5 Pro | Phân làn Model Router, Streaming SSE, Tool Calling |
+| **Embedding & Vector** | Gemini Embedding Model | gemini-embedding-001 | Vector 768 chiều cho bài hát và câu hỏi đàm thoại |
+| **Khả năng Phục hồi** | Resilience4j | 2.2.0 | Circuit Breaker trượt 120s, tự ngắt mạch và phục hồi sau 30s |
+| **Bộ nhớ đệm Telemetry**| Caffeine Cache | 3.x | Bộ nhớ đệm 50.000 entry TTL 30m đo lặp lại người dùng |
+| **Cơ sở dữ liệu** | MySQL | 8.0+ | Quản trị dữ liệu quan hệ, `DATETIME(6)` microsecond precision |
+| **ORM / Data Access**| Spring Data JPA, Hibernate, Flyway | 3.2.2 | Ánh xạ thực thể, Auditing, Quản lý Migration tự động |
 | **Lưu trữ Đám mây** | Cloudinary SDK | 1.36.0 | Lưu trữ tệp âm thanh MP3 và hình ảnh (Avatar, Covers) |
 | **Biên dịch & Code Gen**| Project Lombok, MapStruct | 1.18.36 / 1.6.3 | Tự động sinh Getter/Setter, Builder, Mapper DTO ↔ Entity |
 | **Build Tool** | Apache Maven Wrapper (`mvnw`) | 3.9.x | Quản lý dependencies và build dự án |
@@ -118,7 +173,7 @@ flowchart TD
 
 ---
 
-## 📁 4. Cấu Trúc Thư Mục (Project Structure)
+## 📁 5. Cấu Trúc Thư Mục (Project Structure)
 
 ```text
 identity-service-main/
@@ -149,7 +204,7 @@ identity-service-main/
 
 ---
 
-## 💻 5. Yêu Cầu Hệ Thống & Cài Đặt (Prerequisites & Installation)
+## 💻 6. Yêu Cầu Hệ Thống & Cài Đặt (Prerequisites & Installation)
 
 ### Yêu cầu tiên quyết
 - **JDK 21** trở lên ([Oracle JDK 21](https://www.oracle.com/java/technologies/downloads/) hoặc [Eclipse Temurin 21](https://adoptium.net/temurin/releases/)).
@@ -165,7 +220,7 @@ CREATE DATABASE IF NOT EXISTS identity_service CHARACTER SET utf8mb4 COLLATE utf
 
 ---
 
-## ⚙️ 6. Cấu Hình Ứng Dụng (Configuration)
+## ⚙️ 7. Cấu Hình Ứng Dụng (Configuration)
 
 Cấu hình chính nằm tại file `src/main/resources/application.yaml`. Bạn có thể tinh chỉnh hoặc truyền qua biến môi trường:
 
@@ -201,7 +256,7 @@ jwt:
 
 ---
 
-## 🚀 7. Hướng Dẫn Khởi Chạy (How to Run)
+## 🚀 8. Hướng Dẫn Khởi Chạy (How to Run)
 
 ### Cách 1: Chạy trực tiếp từ dòng lệnh (Maven Wrapper)
 
@@ -250,7 +305,7 @@ docker run -d --name identity-service -p 8080:8080 \
 
 ---
 
-## 🔑 8. Tài Khoản & Phân Quyền Mặc Định
+## 🔑 9. Tài Khoản & Phân Quyền Mặc Định
 
 Khi khởi chạy ứng dụng lần đầu, hệ thống sẽ tự động tạo tài khoản Quản trị viên (Admin) mặc định:
 - **Username**: `admin`
@@ -262,7 +317,7 @@ Khi khởi chạy ứng dụng lần đầu, hệ thống sẽ tự động tạ
 
 ---
 
-## 📡 9. Danh Sách REST API Chi Tiết (API Endpoints Reference)
+## 📡 10. Danh Sách REST API Chi Tiết (API Endpoints Reference)
 
 Tất cả các endpoints đều có tiền tố: `http://localhost:8080/identity`
 
@@ -390,9 +445,19 @@ Tất cả các endpoints đều có tiền tố: `http://localhost:8080/identit
 | `GET` | `/permissions` | `ADMIN` | Xem danh sách Permissions |
 | `DELETE`| `/permissions/{permission}`| `ADMIN` | Xóa Permission |
 
+### 11. Trợ Lý Âm Nhạc AI Agent (`/api/ai/chat`)
+| Method | Endpoint | Yêu cầu Auth | Mô tả |
+|---|---|---|---|
+| `POST` | `/api/ai/chat/stream` | Authenticated | Stream SSE phản hồi AI, hỗ trợ Fast-Path (<10ms), Model Router, RAG & Tool Calling |
+| `GET` | `/api/ai/chat/sessions` | Authenticated | Lấy danh sách các phiên trò chuyện của người dùng |
+| `POST` | `/api/ai/chat/sessions` | Authenticated | Tạo phiên trò chuyện mới (chọn Persona: `GENZ_DJ`, `MUSIC_CRITIC`, `HEALING_BUDDY`) |
+| `GET` | `/api/ai/chat/sessions/active` | Authenticated | Lấy hoặc khởi tạo phiên trò chuyện đang hoạt động |
+| `GET` | `/api/ai/chat/sessions/{sessionId}/messages` | Authenticated | Lấy lịch sử tin nhắn trong phiên (Sliding Window, bảo toàn thứ tự USER $\rightarrow$ AI) |
+| `DELETE`| `/api/ai/chat/sessions/{sessionId}` | Authenticated | Xóa phiên trò chuyện (kiểm soát IDOR) |
+
 ---
 
-## 📦 10. Định Dạng Phản Hồi Chuẩn (API Response Format)
+## 📦 11. Định Dạng Phản Hồi Chuẩn (API Response Format)
 
 Mọi phản hồi từ hệ thống đều được gói trong cấu trúc đối tượng `ApiResponse<T>` đồng nhất:
 
@@ -435,7 +500,7 @@ Mọi phản hồi từ hệ thống đều được gói trong cấu trúc đ�
 
 ---
 
-## 📮 11. Kiểm Thử Với Postman (Postman Collection)
+## 📮 12. Kiểm Thử Với Postman (Postman Collection)
 
 File Postman Collection được đính kèm sẵn trong thư mục dự án:
 `identity-service-main/Identity Service.postman_collection.json`
@@ -459,7 +524,7 @@ File Postman Collection được đính kèm sẵn trong thư mục dự án:
 
 ---
 
-## 📄 12. Giấy Phép & Đóng Góp
+## 📄 13. Giấy Phép & Đóng Góp
 
 - Dự án được phát triển phục vụ mục đích học tập, nghiên cứu và xây dựng hệ thống nền tảng dịch vụ âm nhạc trực tuyến.
 - Mọi đóng góp, báo lỗi (Issue) hoặc Pull Request đều được hoan nghênh!
