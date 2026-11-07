@@ -2,6 +2,7 @@ package com.devteria.identityservice.service;
 
 import com.devteria.identityservice.dto.FastPathResult;
 import com.devteria.identityservice.enums.AiPersona;
+import com.devteria.identityservice.util.VietnameseTextNormalizer;
 
 import java.text.Normalizer;
 import java.util.Locale;
@@ -26,7 +27,7 @@ public final class FastPathEngine {
             "^(?:tiếp tục|phát tiếp)(?: nhạc)?(?: (?:đi|nhé|giúp|ạ|với|mình|cho mình|giùm|hộ|nào|nha))*$",
             Pattern.CASE_INSENSITIVE);
     private static final Pattern NEXT_ACCENTED = Pattern.compile(
-            "^(?:bài tiếp|qua bài|chuyển bài|next bài|bài sau|bài kế tiếp)(?: (?:đi|nhé|ạ|với|mình|cho mình|giùm|hộ|nào|nha))*$",
+            "^(?:bài tiếp|qua bài|chuyển bài|next bài|bài sau|bài kế tiếp|bài tiếp theo)(?: (?:đi|nhé|ạ|với|mình|cho mình|giùm|hộ|nào|nha))*$",
             Pattern.CASE_INSENSITIVE);
 
     // Regex không dấu (Tier 2) - Phân nhóm dứt khoát, hỗ trợ đầy đủ 'tam dung nhac', 'tat', 'tat nhac'
@@ -37,7 +38,7 @@ public final class FastPathEngine {
             "^(?:tiep tuc(?: nhac)?|phat tiep(?: nhac)?|resume)(?: (?:di|nhe|giup|a|voi|minh|cho minh|dum|ho|nao|nha))*$",
             Pattern.CASE_INSENSITIVE);
     private static final Pattern NEXT_UNACCENTED = Pattern.compile(
-            "^(?:bai tiep|next|qua bai|chuyen bai|next bai|bai sau|bai ke tiep)(?: (?:di|nhe|a|voi|minh|cho minh|dum|ho|nao|nha))*$",
+            "^(?:bai tiep|next|qua bai|chuyen bai|next bai|bai sau|bai ke tiep|bai tiep theo)(?: (?:di|nhe|a|voi|minh|cho minh|dum|ho|nao|nha))*$",
             Pattern.CASE_INSENSITIVE);
 
     // Khớp chào hỏi và danh tính
@@ -107,21 +108,23 @@ public final class FastPathEngine {
                 return Optional.of(FastPathResult.playerAction(ActionType.PAUSE, "Đã tạm dừng phát nhạc."));
             }
             if (RESUME_ACCENTED.matcher(lowerRaw).matches()) {
-                return Optional.of(FastPathResult.playerAction(ActionType.RESUME, "Tiếp tục phát nhạc."));
+                return Optional.of(FastPathResult.playerAction(ActionType.RESUME, "Đã tiếp tục phát nhạc."));
             }
             if (NEXT_ACCENTED.matcher(lowerRaw).matches()) {
                 return Optional.of(FastPathResult.playerAction(ActionType.NEXT, "Đã gửi lệnh chuyển bài."));
             }
-        } else {
-            if (STOP_UNACCENTED.matcher(lowerRaw).matches()) {
-                return Optional.of(FastPathResult.playerAction(ActionType.PAUSE, "Đã tạm dừng phát nhạc."));
-            }
-            if (RESUME_UNACCENTED.matcher(lowerRaw).matches()) {
-                return Optional.of(FastPathResult.playerAction(ActionType.RESUME, "Tiếp tục phát nhạc."));
-            }
-            if (NEXT_UNACCENTED.matcher(lowerRaw).matches()) {
-                return Optional.of(FastPathResult.playerAction(ActionType.NEXT, "Đã gửi lệnh chuyển bài."));
-            }
+        }
+
+        // Tier 2: Khớp không dấu (áp dụng cho câu không dấu hoặc câu gõ nửa nạc nửa mỡ không khớp Tier 1)
+        String unaccented = hasDiacritics ? VietnameseTextNormalizer.stripDiacritics(lowerRaw) : lowerRaw;
+        if (STOP_UNACCENTED.matcher(unaccented).matches()) {
+            return Optional.of(FastPathResult.playerAction(ActionType.PAUSE, "Đã tạm dừng phát nhạc."));
+        }
+        if (RESUME_UNACCENTED.matcher(unaccented).matches()) {
+            return Optional.of(FastPathResult.playerAction(ActionType.RESUME, "Đã tiếp tục phát nhạc."));
+        }
+        if (NEXT_UNACCENTED.matcher(unaccented).matches()) {
+            return Optional.of(FastPathResult.playerAction(ActionType.NEXT, "Đã gửi lệnh chuyển bài."));
         }
 
         return Optional.empty();

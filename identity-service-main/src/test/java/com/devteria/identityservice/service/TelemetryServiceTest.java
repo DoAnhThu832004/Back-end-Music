@@ -1,5 +1,6 @@
 package com.devteria.identityservice.service;
 
+import com.devteria.identityservice.enums.AiPersona;
 import com.devteria.identityservice.enums.CacheBypassReason;
 import com.devteria.identityservice.enums.CacheScope;
 import io.micrometer.core.instrument.Counter;
@@ -85,14 +86,15 @@ class TelemetryServiceTest {
     }
 
     @Test
-    @DisplayName("Phân biệt chính xác giữa lặp lại liên người dùng (exact_repeat_hits) và cùng người dùng thử lại (self_repeat_hits)")
+    @DisplayName("Phân biệt chính xác giữa lặp lại liên người dùng và cùng người dùng thử lại (cả cửa sổ 30m và 24h)")
     void testCrossUserVsSameUserRepeat() {
         CacheEvaluationResult generalResult = CacheEvaluationResult.general();
         String prompt = "Nguồn gốc nhạc Jazz?";
 
-        // Lượt 1: User A gửi câu hỏi lần đầu -> Lưu vào cache
+        // Lượt 1: User A gửi câu hỏi lần đầu -> Lưu vào cache 30m và 24h
         telemetryService.recordPromptTelemetry("userA", prompt, generalResult);
         assertEquals(1, telemetryService.getCacheSize());
+        assertEquals(1, telemetryService.getCache24hSize());
         assertNull(meterRegistry.find("ai.cache.exact_repeat_hits").counter());
         assertNull(meterRegistry.find("ai.cache.self_repeat_hits").counter());
 
@@ -101,6 +103,9 @@ class TelemetryServiceTest {
         Counter selfRepeatCounter = meterRegistry.find("ai.cache.self_repeat_hits").counter();
         assertNotNull(selfRepeatCounter);
         assertEquals(1.0, selfRepeatCounter.count());
+        Counter selfRepeat24hCounter = meterRegistry.find("ai.cache.self_repeat_24h_hits").counter();
+        assertNotNull(selfRepeat24hCounter);
+        assertEquals(1.0, selfRepeat24hCounter.count());
 
         // Lượt 3: User B (người dùng khác) gửi câu hỏi tương tự (sau khi canonicalize giống hệt)
         String promptUserB = "  nguồn gốc NHẠC JAZZ???  ";
@@ -108,27 +113,55 @@ class TelemetryServiceTest {
         Counter exactRepeatCounter = meterRegistry.find("ai.cache.exact_repeat_hits").counter();
         assertNotNull(exactRepeatCounter);
         assertEquals(1.0, exactRepeatCounter.count());
+        Counter exactRepeat24hCounter = meterRegistry.find("ai.cache.exact_repeat_24h_hits").counter();
+        assertNotNull(exactRepeat24hCounter);
+        assertEquals(1.0, exactRepeat24hCounter.count());
     }
 
     @Test
-    @DisplayName("Hai người dùng ẩn danh (userId null) gửi câu hỏi giống nhau không bị tính nhầm thành tự lặp")
-    void testAnonymousUsersDoNotCollideAsSelfRepeat() {
+    @DisplayName("Cô lập Persona trong khóa hash: Câu hỏi giống nhau khác Persona không bị tính lặp chéo")
+    void testPersonaIsolationInRepeatKey() {
         CacheEvaluationResult generalResult = CacheEvaluationResult.general();
-        String prompt = "Giải thích thang âm ngũ cung";
+        String prompt = "Phân tích điệu Blues 12 ô nhịp";
 
-        // Người dùng ẩn danh 1 gửi câu hỏi
-        telemetryService.recordPromptTelemetry(null, prompt, generalResult);
+        // User A hỏi với persona GENZ_DJ
+        telemetryService.recordPromptTelemetry("userA", prompt, AiPersona.GENZ_DJ, generalResult);
         assertEquals(1, telemetryService.getCacheSize());
-        assertNull(meterRegistry.find("ai.cache.self_repeat_hits").counter());
 
-        // Người dùng ẩn danh 2 gửi câu hỏi tương tự
-        telemetryService.recordPromptTelemetry(null, prompt, generalResult);
-        // Không bị tính vào self_repeat_hits
-        assertNull(meterRegistry.find("ai.cache.self_repeat_hits").counter());
-        // Được tính chính xác vào exact_repeat_hits
+        // User B hỏi đúng câu đó nhưng với persona MUSIC_CRITIC -> Persona khác nhau nên không được hit cache chéo
+        telemetryService.recordPromptTelemetry("userB", prompt, AiPersona.MUSIC_CRITIC, generalResult);
+        assertEquals(2, telemetryService.getCacheSize());
+        assertNull(meterRegistry.find("ai.cache.exact_repeat_hits").counter());
+
+        // User C hỏi đúng câu đó với persona GENZ_DJ -> Cùng persona GENZ_DJ nên tính exact_repeat_hits
+        telemetryService.recordPromptTelemetry("userC", prompt, AiPersona.GENZ_DJ, generalResult);
         Counter exactRepeatCounter = meterRegistry.find("ai.cache.exact_repeat_hits").counter();
         assertNotNull(exactRepeatCounter);
         assertEquals(1.0, exactRepeatCounter.count());
+    }
+
+    @Test
+    @DisplayName("Người dùng ẩn danh (userId null/blank) được gắn nhãn anonymous_prompts và không làm ô nhiễm repeat cache")
+    void testAnonymousPromptsTrackedSeparatelyWithoutPollutingRepeatHits() {
+        CacheEvaluationResult generalResult = CacheEvaluationResult.general();
+        String prompt = "Giải thích thang âm ngũ cung";
+
+        // Người dùng ẩn danh gửi câu hỏi
+        telemetryService.recordPromptTelemetry(null, prompt, generalResult);
+        telemetryService.recordPromptTelemetry("   ", prompt, generalResult);
+
+        // Cache lặp lại không bị ghi đè/ô nhiễm
+        assertEquals(0, telemetryService.getCacheSize());
+        assertEquals(0, telemetryService.getCache24hSize());
+
+        // Metric anonymous_prompts được tăng 2 lần
+        Counter anonCounter = meterRegistry.find("ai.cache.anonymous_prompts").counter();
+        assertNotNull(anonCounter);
+        assertEquals(2.0, anonCounter.count());
+
+        // Tuyệt đối không sinh metric exact_repeat_hits hoặc self_repeat_hits giả tạo
+        assertNull(meterRegistry.find("ai.cache.exact_repeat_hits").counter());
+        assertNull(meterRegistry.find("ai.cache.self_repeat_hits").counter());
     }
 
     @Test

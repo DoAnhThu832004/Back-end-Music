@@ -246,7 +246,7 @@ public class AiAgentOrchestrator {
                 try {
                     cacheEvalResult = canCacheEvaluator.evaluate(userRawPrompt, currentSongId, hasPriorHistory);
                     if (telemetryService != null) {
-                        telemetryService.recordPromptTelemetry(currentUsername, userRawPrompt, cacheEvalResult);
+                        telemetryService.recordPromptTelemetry(currentUsername, userRawPrompt, currentPersona, cacheEvalResult);
                     }
                 } catch (Exception e) {
                     log.warn("[Agent Orchestrator] Fail-safe: Lỗi khi đánh giá Cache / Telemetry: {}", e.getMessage());
@@ -612,7 +612,8 @@ public class AiAgentOrchestrator {
                         .contentType(MediaType.APPLICATION_JSON)
                         .body(requestJson)
                         .retrieve()
-                        .body(String.class)
+                        .body(String.class),
+                aiStreamingExecutor
         );
 
         try {

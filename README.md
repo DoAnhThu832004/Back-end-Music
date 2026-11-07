@@ -70,8 +70,8 @@ Backend RESTful API hoàn chỉnh cho nền tảng **Phát nhạc trực tuyến
      - **Fast-Path Engine (< 10ms)**: Khớp lệnh chào hỏi và player transport (`PAUSE`, `RESUME`, `NEXT`) chạy trước Session Lock, đồng bộ với Android Client.
      - **Dynamic Model Router**: Phân làn tự động giữa Fast Tier (`gemini-3.5-flash-lite`) và Reasoning Tier (`gemini-2.5-pro`).
      - **Resilience4j Circuit Breaker & First-Token Watchdog (8000ms)**: Tự động ngắt mạch khi upstream gặp sự cố, tự phục hồi sau 30s; cơ chế fallback an toàn phân biệt read-only vs side-effect tools.
-     - **CanCacheEvaluator & Telemetry Service**: 8 cổng kiểm định bypass, bộ đếm Caffeine 50k TTL 30m, phân biệt lặp liên người dùng vs tự thử lại, Khung Quyết Định Dựa Trên Dữ Liệu tiến tới 100% Production-Ready.
-- **Bộ Kiểm Thử Toàn Diện**: 91/91 Unit & Integration Tests đạt tỷ lệ vượt qua 100% (`FastPathEngineTest`, `AiChatControllerTest`, `ModelRouterServiceTest`, `CircuitBreakerLifecycleTest`, `AiAgentOrchestratorTest`, `CanCacheEvaluatorTest`, `TelemetryServiceTest`).
+     - **CanCacheEvaluator & Telemetry Service**: 8 cổng kiểm định bypass, bộ đếm Caffeine 50k TTL 30m & 24h, cô lập Persona Isolation (`persona:canonical`), phân biệt lặp liên người dùng vs tự thử lại, cô lập anonymous prompts, Khung Quyết Định Dựa Trên Dữ Liệu tiến tới 100% Production-Ready.
+- **Bộ Kiểm Thử Toàn Diện**: 104/104 Unit & Integration Tests đạt tỷ lệ vượt qua 100% (`FastPathEngineTest`, `AiChatControllerTest`, `ModelRouterServiceTest`, `CircuitBreakerLifecycleTest`, `AiAgentOrchestratorTest`, `CanCacheEvaluatorTest`, `TelemetryServiceTest`, `VietnameseTextNormalizerTest`).
 
 ---
 
@@ -149,7 +149,7 @@ flowchart TD
     Moderation --> User
 ```
 
-Chi tiết cẩm nang kiến trúc 7 lớp xem tại [KIEN_TRUC_AI_6_LOP.md](KIEN_TRUC_AI_6_LOP.md) và bản đặc tả chi tiết Lớp 7 tại [THIET_KE_CHI_TIET_LOP_7_CACHE_ROUTER.md](THIET_KE_CHI_TIET_LOP_7_CACHE_ROUTER.md).
+Chi tiết cẩm nang kiến trúc 7 lớp xem tại [KIEN_TRUC_AI_7_LOP.md](KIEN_TRUC_AI_7_LOP.md) và bản đặc tả chi tiết Lớp 7 tại [THIET_KE_CHI_TIET_LOP_7_CACHE_ROUTER.md](THIET_KE_CHI_TIET_LOP_7_CACHE_ROUTER.md).
 
 ---
 

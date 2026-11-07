@@ -25,6 +25,21 @@ public final class VietnameseTextNormalizer {
     }
 
     /**
+     * Tách bỏ toàn bộ dấu thanh/mũ tiếng Việt và chuẩn hóa ký tự 'đ'/'Đ'/'ð' thành 'd'/'D'.
+     *
+     * @param input Chuỗi văn bản tiếng Việt
+     * @return Chuỗi sau khi đã loại bỏ dấu tiếng Việt, giữ nguyên hoa/thường
+     */
+    public static String stripDiacritics(String input) {
+        if (input == null || input.isEmpty()) {
+            return "";
+        }
+        String normalized = Normalizer.normalize(input, Normalizer.Form.NFD);
+        String withoutMarks = DIACRITICS_PATTERN.matcher(normalized).replaceAll("");
+        return withoutMarks.replace('đ', 'd').replace('Đ', 'D').replace('ð', 'd');
+    }
+
+    /**
      * Chuẩn hóa chuỗi tiếng Việt thành chuỗi không dấu, viết thường và thu gọn khoảng trắng.
      *
      * @param input Chuỗi văn bản tiếng Việt gốc

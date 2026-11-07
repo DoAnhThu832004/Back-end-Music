@@ -104,6 +104,7 @@ class FastPathEngineTest {
 
         assertThat(result).isPresent();
         assertThat(result.get().playerAction().getAction()).isEqualTo("RESUME");
+        assertThat(result.get().responseText()).isEqualTo("Đã tiếp tục phát nhạc.");
     }
 
     @ParameterizedTest
@@ -113,10 +114,12 @@ class FastPathEngineTest {
             "bài tiếp",
             "next bài",
             "bài sau",
+            "bài tiếp theo",
             "qua bai",
             "chuyen bai",
             "next",
-            "bai sau"
+            "bai sau",
+            "bai tiep theo"
     })
     @DisplayName("Khớp lệnh NEXT có dấu và không dấu - Phản hồi trung tính")
     void evaluate_Next_Variants(String prompt) {
@@ -131,6 +134,26 @@ class FastPathEngineTest {
         assertThat(result).isPresent();
         assertThat(result.get().playerAction().getAction()).isEqualTo("NEXT");
         assertThat(result.get().responseText()).isEqualTo("Đã gửi lệnh chuyển bài.");
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {
+            "tạm dung",
+            "tam dừng",
+            "bài tiep",
+            "bai tiếp theo"
+    })
+    @DisplayName("Khớp lệnh gõ nửa nạc nửa mỡ (partially accented) nhờ tầng fallback không dấu")
+    void evaluate_PartiallyAccented_FallbackSuccess(String prompt) {
+        Optional<FastPathResult> result = FastPathEngine.evaluate(
+                prompt,
+                AiPersona.GENZ_DJ,
+                SAMPLE_SONG_ID,
+                false,
+                true
+        );
+
+        assertThat(result).isPresent();
     }
 
     @ParameterizedTest

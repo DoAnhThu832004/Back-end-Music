@@ -1,6 +1,7 @@
 package com.devteria.identityservice.service;
 
 import com.devteria.identityservice.enums.CacheBypassReason;
+import com.devteria.identityservice.util.VietnameseTextNormalizer;
 import org.springframework.stereotype.Component;
 
 import java.text.Normalizer;
@@ -16,7 +17,6 @@ import java.util.regex.Pattern;
 @Component
 public class CanCacheEvaluator {
 
-    private static final Pattern COMBINING_DIACRITICAL_MARKS = Pattern.compile("\\p{InCombiningDiacriticalMarks}+");
     private static final Pattern TRAILING_PUNCTUATION = Pattern.compile("[!?.,;:]+$");
 
     // 1. Dữ liệu cá nhân (Personal Data) - Quét có dấu (UNICODE (?U)) và không dấu
@@ -127,9 +127,6 @@ public class CanCacheEvaluator {
     }
 
     public static String stripDiacritics(String input) {
-        if (input == null) return "";
-        String normalized = Normalizer.normalize(input, Normalizer.Form.NFD);
-        String withoutMarks = COMBINING_DIACRITICAL_MARKS.matcher(normalized).replaceAll("");
-        return withoutMarks.replace('đ', 'd').replace('Đ', 'D');
+        return VietnameseTextNormalizer.stripDiacritics(input);
     }
 }

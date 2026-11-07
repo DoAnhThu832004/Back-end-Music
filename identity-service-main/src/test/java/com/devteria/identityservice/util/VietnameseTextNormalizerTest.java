@@ -60,4 +60,13 @@ class VietnameseTextNormalizerTest {
         assertTrue(VietnameseTextNormalizer.tokenize("").isEmpty());
         assertTrue(VietnameseTextNormalizer.tokenize(null).isEmpty());
     }
+
+    @Test
+    @DisplayName("stripDiacritics preserves case and removes Vietnamese accents")
+    void testStripDiacritics() {
+        assertEquals("Son Tung M-TP", VietnameseTextNormalizer.stripDiacritics("Sơn Tùng M-TP"));
+        assertEquals("Den Vau - Tron Tim", VietnameseTextNormalizer.stripDiacritics("Đen Vâu - Trốn Tìm"));
+        assertEquals("", VietnameseTextNormalizer.stripDiacritics(""));
+        assertEquals("", VietnameseTextNormalizer.stripDiacritics(null));
+    }
 }
