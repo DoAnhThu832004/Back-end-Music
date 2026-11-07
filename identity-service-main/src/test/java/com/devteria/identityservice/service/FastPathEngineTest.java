@@ -179,6 +179,27 @@ class FastPathEngineTest {
         assertThat(result).isEmpty();
     }
 
+    @ParameterizedTest
+    @ValueSource(strings = {
+            "dung tat nhac",
+            "ko dung lai",
+            "cho tat nhac",
+            "ko tat",
+            "dung tam dung"
+    })
+    @DisplayName("Kiểm chứng thực tế: Các câu phủ định gõ không dấu không khớp Fast-Path -> Nhường LLM")
+    void evaluate_UnaccentedNegation_ShouldBypass(String prompt) {
+        Optional<FastPathResult> result = FastPathEngine.evaluate(
+                prompt,
+                AiPersona.GENZ_DJ,
+                SAMPLE_SONG_ID,
+                false,
+                true
+        );
+
+        assertThat(result).isEmpty();
+    }
+
     @Test
     @DisplayName("Chào hỏi ở Turn 1 (hasPriorHistory == false) -> Trả template chào nhanh")
     void evaluate_Greeting_Turn1_Success() {

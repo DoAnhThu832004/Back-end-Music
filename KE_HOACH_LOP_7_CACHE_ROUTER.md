@@ -1,24 +1,24 @@
 # ⚡ KẾ HOẠCH NÂNG CẤP LỚP 7: CACHE & MODEL ROUTER
 > **Dự án:** `identity-service-main` (Spring Boot 3 + Google Gemini) & Android Client App  
 > **Mục tiêu:** Nâng cấp Lớp 7 từ **25%** lên **75% Code-Complete, Telemetry Instrumented** và chuẩn bị nghiệm thu **100% Production-Ready** qua dữ liệu thực tế  
-> **Trạng thái:** 🚀 *Hiệu chuẩn lần 17 — Nguồn Sự Thật Duy Nhất (Single Source of Truth) cho tiến độ, bảng test 104/104 tests passed 100%, và checklist công việc. Làm rõ non-streaming socket 15s vs two-phase streaming, kiểm chứng regex phủ định không dấu an toàn nhờ neo đầu, khai báo metric in-stream safety blocks, ghi nhận biên prompt trống & giới hạn 50k Caffeine 24h, bổ sung test tích hợp DB thật cho Tie-Breaker collation.*
+> **Trạng thái:** 🚀 *Hiệu chuẩn lần 17 — Nguồn Sự Thật Duy Nhất (Single Source of Truth) cho tiến độ, bảng test 109/109 tests passed 100%, và checklist công việc. Làm rõ cơ chế SO_TIMEOUT socket 15s không trả byte nào vs cancel(true) luồng ảo, khắc phục PromQL alert increase() 5m, đo lường p95/p99 TTFT cho Gemini Pro Thinking, thay thế Redis SET NX cho đa instance, và bảo chứng thực nghiệm 58 ca FastPathEngine.*
 
 ---
 
 ## 📌 1. ĐÁNH GIÁ HIỆN TRẠNG & PHÂN RÃ TIẾN ĐỘ CHUẨN XÁC
 
 > [!NOTE]
-> **Vai Trò Nguồn Sự Thật Duy Nhất (Single Source of Truth):** Tài liệu này là cơ sở chuẩn mực duy nhất để theo dõi tiến độ, ma trận phân bổ kiểm thử (104/104 tests) và danh mục checklist công việc của toàn bộ Lớp 7 (Cache & Model Router). Mọi tài liệu kiến trúc khác ([THIET_KE_CHI_TIET_LOP_7_CACHE_ROUTER.md](THIET_KE_CHI_TIET_LOP_7_CACHE_ROUTER.md) và [KIEN_TRUC_AI_7_LOP.md](KIEN_TRUC_AI_7_LOP.md)) đều tham chiếu đồng bộ theo tài liệu này.
+> **Vai Trò Nguồn Sự Thật Duy Nhất (Single Source of Truth):** Tài liệu này là cơ sở chuẩn mực duy nhất để theo dõi tiến độ, ma trận phân bổ kiểm thử (109/109 tests) và danh mục checklist công việc của toàn bộ Lớp 7 (Cache & Model Router). Mọi tài liệu kiến trúc khác ([THIET_KE_CHI_TIET_LOP_7_CACHE_ROUTER.md](THIET_KE_CHI_TIET_LOP_7_CACHE_ROUTER.md) và [KIEN_TRUC_AI_7_LOP.md](KIEN_TRUC_AI_7_LOP.md)) đều tham chiếu đồng bộ theo tài liệu này.
 
 Tiến độ của Lớp 7 được tính toán minh bạch dựa trên 4 thành phần kỹ thuật (mỗi thành phần chiếm trọng số 25%):
 
 | Thành phần kỹ thuật | Trọng số | Trạng thái đạt được | Chi tiết kỹ thuật & Hiện trạng kiểm thử |
 | :--- | :---: | :---: | :--- |
 | **Traditional Data Cache** | 25% | **25% (Sẵn có)** | Caffeine cache cho top trending SQL, In-memory ConcurrentMap cho Vector bài hát |
-| **Fast-Path Command Engine** | 25% | **+25% (Lũy kế 50%)** | **ĐÃ HOÀN THÀNH & NGHIỆM THU (62 tests):** Regex Two-tier có/không dấu, unaccented fallback, "bài tiếp theo", chạy trước Session Lock, đồng bộ Android Client, `DATETIME(6)` microsecond precision, `@Transactional saveFastPathMessages`, Dual Tie-Breaker theo String |
+| **Fast-Path Command Engine** | 25% | **+25% (Lũy kế 50%)** | **ĐÃ HOÀN THÀNH & NGHIỆM THU (67 tests):** Regex Two-tier có/không dấu, unaccented fallback, "bài tiếp theo", chạy trước Session Lock, đồng bộ Android Client, `DATETIME(6)` microsecond precision, `@Transactional saveFastPathMessages`, Dual Tie-Breaker theo String, 5 ca test phủ định không dấu |
 | **Dynamic Model Router & Fallback** | 25% | **+25% (Lũy kế 75%)** | **ĐÃ HOÀN THÀNH & NGHIỆM THU (17 tests):** `ModelRouterService`, Resilience4j `geminiCriticRouter` (loại trừ 400/403 safety khỏi Breaker), watchdog 8000ms trên `aiStreamingExecutor` (socket 15s), phân cấp `UpstreamAiException`, fallback an toàn phân biệt read-only vs side-effect |
 | **Telemetry & Data-Driven Decision** | 25% | **Hạ tầng hoàn tất (25 tests)<br/>Đang thu thập số liệu** | **ĐÃ TRIỂN KHAI HOÀN TẤT & TEST (25 tests):** `CanCacheEvaluator` (8 cổng bypass, regex `(?U)`, over-bypass "nhạc Anh" có chủ ý), `TelemetryService` (Caffeine 50k, cửa sổ 30m & 24h, cô lập `persona:canonical`, tách riêng anonymous prompts), `VietnameseTextNormalizer.stripDiacritics`. **100% Production-Ready** sẽ được ký duyệt sau khi hoàn tất đo đạc thực tế |
-| **TỔNG CỘNG** | **100%** | **75% Code-Complete, Telemetry Instrumented** | **104/104 Unit & Integration Tests Passed (100% Pass Rate). Sẵn sàng giai đoạn đo lường thực tế.** |
+| **TỔNG CỘNG** | **100%** | **75% Code-Complete, Telemetry Instrumented** | **109/109 Unit & Integration Tests Passed (100% Pass Rate). Sẵn sàng giai đoạn đo lường thực tế.** |
 
 ---
 
@@ -64,25 +64,26 @@ Tiến độ của Lớp 7 được tính toán minh bạch dựa trên 4 thành
   * Truy vấn xuôi (ASC - Hiển thị UI): `ORDER BY m.createdAt ASC, m.sender DESC` (USER đứng trước AI).
   * Truy vấn ngược (DESC - Sliding Window): `ORDER BY m.createdAt DESC, m.sender ASC` (AI trước USER, đảo ngược bởi `Collections.reverse()` thì USER luôn trước AI).
   * Bổ sung vào checklist bài test tích hợp DB thật (`AiChatRepositoryIntegrationTest` với Testcontainers MySQL) để bảo chứng 100%.
-* **Phản Hồi An Toàn, Tương Thích & Kiểm Chứng Thực Tế Regex:**
+* **Phản Hồi An Toàn, Tương Thích & Bảo Chứng Thực Nghiệm Regex (58 Tests):**
   * Kiểm tra an toàn `Boolean.TRUE.equals(request.clientSupportsTransportActions())` chống Unboxing NPE.
   * Phản hồi đồng bộ: `"Đã tạm dừng phát nhạc."` cho `PAUSE`, `"Đã tiếp tục phát nhạc."` cho `RESUME`, và `"Đã gửi lệnh chuyển bài."` cho `NEXT` (kèm `.autoExecute(true)`).
   * Khớp bổ sung biến thể `"bài tiếp theo"` / `"bai tiep theo"` và tầng fallback không dấu cho câu gõ lẫn lộn dấu (partially accented).
-  * **Kiểm chứng thực tế Regex Phủ định Không Dấu:** Nhờ cấu trúc neo đầu `^`, các câu phủ định gõ không dấu như `"dung tat nhac"`, `"ko dung lai"`, `"cho tat nhac"` **không khớp** `STOP_UNACCENTED` và rơi xuống LLM an toàn.
-  * **Cảnh báo bẫy thiết kế:** Tuyệt đối không phỏng đoán chặn tiền tố `"dung "` bừa bãi vì trong tiếng Việt không dấu, `"dung"` vừa là "dừng" vừa là "đừng" — chặn tiền tố sẽ chặn nhầm cả lệnh dừng hợp lệ như `"dung lai"`, `"dung nhac"`. Mọi thay đổi logic ở Bước 2 bắt buộc phải đi kèm bộ test case đối chuẩn tự động.
+  * **Bảo chứng thực nghiệm 58 ca Test (bao gồm 5 ca phủ định không dấu):** Bộ kiểm thử `FastPathEngineTest.java` đã được bổ sung 5 ca phủ định không dấu (`"dung tat nhac"`, `"ko dung lai"`, `"cho tat nhac"`, `"ko tat"`, `"dung tam dung"`) và nghiệm thu **58/58 PASS 100%**. Nhờ cấu trúc neo đầu `^` và cuối `$`, các câu phủ định này không khớp `STOP_UNACCENTED` và rơi an toàn xuống Agentic Loop.
+  * **Cảnh báo bẫy thiết kế & Tính hai nghĩa ngữ nghĩa:** Tuyệt đối không phỏng đoán chặn tiền tố `"dung "` bừa bãi vì trong tiếng Việt không dấu, `"dung"` vừa là "dừng" (hợp lệ) vừa là "đừng" (phủ định). Các cụm từ nhập nhằng như `"dung phat"` (đừng phát vs dừng phát) hay `"dung tiep"` (dừng tiếp vs đừng tiếp) phải được phân tích dựa trên dữ liệu log truy vấn người dùng thực tế trước khi thêm quy tắc.
 
 ---
 
 ### 2. Model Router & Resilience4j Circuit Breaker
-* **Loại Trừ Lỗi Client (400/403) Khỏi Circuit Breaker:**
+* **Loại Trừ Lỗi Client (400/403) Khỏi Circuit Breaker & Cảnh Báo Prometheus `increase()`:**
   * `RestClientResponseException` được thu hẹp lại: Chỉ ghi nhận `UpstreamAiException`, `HttpServerErrorException` (5xx), `ResourceAccessException` và `HttpClientErrorException.TooManyRequests` (429) vào `record-exceptions`.
   * Đưa `HttpClientErrorException.BadRequest` (400 - Safety block của Google, prompt vi phạm) và `Forbidden` (403) vào `ignore-exceptions`. Điều này ngăn chặn việc Circuit Breaker cho persona `MUSIC_CRITIC` bị nảy ngắt mạch oan uổng khi người dùng gửi prompt vi phạm chính sách của Google.
-  * Khai báo counter `ai.gemini.client.errors` (400/403) và `ai.gemini.safety.blocks` (in-stream HTTP 200 finishReason=SAFETY) phục vụ Prometheus Alerting độc lập.
-* **Vòng Đời Permit, Watchdog 8000ms & Socket Timeout (15s):**
+  * Khai báo counter `ai.gemini.client.errors` (400/403) và `ai.gemini.safety.blocks` (in-stream HTTP 200 finishReason=SAFETY) phục vụ Prometheus Alerting độc lập với cú pháp chuẩn xác `increase(...[5m]) > 5` (thay vì `rate()` req/s) và giới hạn cardinality nhãn `reason`.
+* **Vòng Đời Permit, Watchdog 8000ms, Bản Chất SO_TIMEOUT (15s) & `future.cancel(true)`:**
   * Cấp permit qua `tryAcquirePermission()`, bảo vệ chống double-release bằng `AtomicBoolean resultRecorded`.
   * Watchdog 8000ms thực thi qua `CompletableFuture.supplyAsync(..., aiStreamingExecutor)` trên Virtual Threads, cách ly hoàn toàn với ForkJoinPool.
-  * **Phân định rõ kỹ thuật:** Hiện tại vòng lặp Multi-step Agent gọi non-streaming `:generateContent`, `readTimeout = 15s` là socket SO_TIMEOUT cho toàn bộ phản hồi của một iteration (`maxOutputTokens = 800`). Watchdog 8s ngắt kịp thời, socket tự đóng sau tối đa 7s (15s - 8s), **tuyệt đối không dùng `geminiStreamRestClient` (90s)**.
-  * **Đề xuất Two-Phase Client:** Khi nâng cấp Pro sang full-streaming, tách 2 giai đoạn: Watchdog 8s giám sát first-token qua client ngắn, sau đó chuyển sang client stream dài (90s hoặc inter-chunk timeout 15s) tránh ngắt giữa chừng khi Pro sinh phản hồi dài.
+  * **Bản chất kỹ thuật SO_TIMEOUT & `future.cancel(true)`:** `readTimeout = 15s` là idle read timeout giữa các packet. Lệnh `future.cancel(true)` giải phóng luồng gọi của ứng dụng ngay lập tức, nhưng thread đọc I/O của `HttpURLConnection` bên dưới vẫn chờ đến khi socket timeout (tối đa thêm 7s trong điều kiện **0-byte starvation**, tức server không trả về byte nào). Tuyệt đối **không dùng `geminiStreamRestClient` (90s)** để tránh rò rỉ socket 82s.
+  * **Hiệu chuẩn Ngưỡng Watchdog với Gemini 2.5 Pro Thinking Budget:** 8000ms là ngưỡng khởi điểm; mô hình Pro có internal thinking budget nên TTFT câu hỏi phức tạp có thể vượt quá 8s. Cần giám sát p50/p95/p99 của `ai.latency.ttft` để tinh chỉnh ngưỡng trước khi sản xuất.
+  * **Đề xuất Two-Phase Client:** Khi nâng cấp Pro sang full-streaming, tách 2 giai đoạn: Watchdog giám sát first-token qua client ngắn, sau đó chuyển sang client stream dài (90s hoặc inter-chunk timeout 15s) tránh ngắt giữa chừng khi Pro sinh phản hồi dài.
 * **Tinh Chỉnh Fallback Guard An Toàn:**
   * Cho phép fallback an toàn về Flash khi chỉ gọi các tool đọc (`search_music_library`, `get_top_trending_songs`, `get_user_recommendations`).
   * Chặn đứng fallback khi đã gọi tool có tác dụng phụ (`trigger_player_action`, `propose_ai_playlist`) để ngăn lỗi Double Mutation.
@@ -99,7 +100,7 @@ Tiến độ của Lớp 7 được tính toán minh bạch dựa trên 4 thành
   * Chuẩn hóa Canonical Prompt: NFC $\rightarrow$ bỏ dấu (`VietnameseTextNormalizer.stripDiacritics`) $\rightarrow$ cắt dấu câu cuối $\rightarrow$ gộp khoảng trắng thừa $\rightarrow$ lowercase $\rightarrow$ SHA-256 tích hợp Persona.
   * Tách biệt người dùng ẩn danh: Khi `userId` rỗng/null, ghi nhận `ai.cache.anonymous_prompts` và không lưu vào repeat cache nhằm loại trừ sai lệch dữ liệu lặp lại liên người dùng.
   * Hoàn toàn bọc trong khối `try-catch` **fail-safe**, không bao giờ làm gián đoạn luồng đàm thoại.
-  * **Minh bạch Hóa Đo lường Telemetry:** Prompt rỗng được thoát sớm (sai lệch biên $< 0.01\%$); giới hạn 50k W-TinyLFU và đặc thù in-memory single-instance làm tăng tính chất "cận dưới thận trọng" (Strict Lower Bound) của số đo potential cache hit rate.
+  * **Minh bạch Hóa Đo lường Telemetry:** Prompt rỗng được thoát sớm (sai lệch biên $< 0.01\%$); giới hạn 50k W-TinyLFU và đặc thù in-memory single-instance làm tăng tính chất "cận dưới thận trọng" (Strict Lower Bound) của số đo potential cache hit rate. Khi mở rộng nhiều instance, sử dụng Prometheus aggregation hoặc Redis nguyên tử `SET telemetry:24h:{sha256} {userId} EX 86400 NX` để tính hit chéo (thay vì HyperLogLog vốn không hỗ trợ kiểm tra tồn tại).
 
 ---
 
@@ -141,13 +142,13 @@ flowchart TD
 
 ---
 
-## 📊 4. KẾT QUẢ ĐỐI CHUẨN THỰC NGHIỆM (104/104 TESTS PASS)
+## 📊 4. KẾT QUẢ ĐỐI CHUẨN THỰC NGHIỆM (109/109 TESTS PASS)
 
 Bảng phân bổ chi tiết kết quả kiểm thử tự động trên Maven với JDK 21 (đảm bảo tính chính xác số học 100%):
 
 | Nhóm chức năng | Lớp Kiểm Thử (Test Class) | Số lượng test | Kết quả | Trọng tâm kiểm chứng |
 | :--- | :--- | :---: | :---: | :--- |
-| **Giai đoạn 1** | `FastPathEngineTest` | 53 | **53/53 PASS** | Regex Two-Tier có/không dấu, lệnh đệm dài, phản hồi trung tính NEXT, "bài tiếp theo", fallback partially accented, chặn phủ định, chống nhầm tên riêng |
+| **Giai đoạn 1** | `FastPathEngineTest` | 58 | **58/58 PASS** | Regex Two-Tier có/không dấu, lệnh đệm dài, phản hồi trung tính NEXT, "bài tiếp theo", fallback partially accented, chặn phủ định (bao phủ 5 ca phủ định không dấu: "dung tat nhac", "ko dung lai", "cho tat nhac", "ko tat", "dung tam dung"), chống nhầm tên riêng |
 | | `AiChatControllerTest` | 9 | **9/9 PASS** | Fast-Path Turn 1 & Turn 2+, Player Transport, Legacy client fallback, IDOR check, Session Lock isolation |
 | **Giai đoạn 2** | `ModelRouterServiceTest` | 7 | **7/7 PASS** | Phân làn Critic với từ khóa nhạc lý không dấu, chặn prompt ngắn, hạ cấp khi Breaker OPEN |
 | | `CircuitBreakerLifecycleTest` | 7 | **7/7 PASS** | Vòng đời Permit, Watchdog 8000ms trên aiStreamingExecutor, nhả permit khi client abort, an toàn fallback theo phân loại tool |
@@ -155,7 +156,7 @@ Bảng phân bổ chi tiết kết quả kiểm thử tự động trên Maven v
 | **Giai đoạn 3** | `CanCacheEvaluatorTest` | 11 | **11/11 PASS** | Bao phủ 8 cổng BYPASS, câu GENERAL hợp lệ, over-bypass "nhạc Anh" có chủ ý |
 | | `TelemetryServiceTest` | 8 | **8/8 PASS** | Canonical prompt SHA-256 kèm Persona prefix, đếm bypass reason, phân biệt cross-user vs self-retry (30m & 24h), cô lập anonymous prompts |
 | | `VietnameseTextNormalizerTest` | 6 | **6/6 PASS** | Chuẩn hóa không dấu, xử lý ký tự Đ/đ, tách từ tokenize, bóc tách dấu giữ nguyên hoa thường (`stripDiacritics`) |
-| **TỔNG CỘNG** | **8 test classes** | **104** | **104/104 PASS** | **Tỷ lệ vượt qua: 100% (BUILD SUCCESS)** |
+| **TỔNG CỘNG** | **8 test classes** | **109** | **109/109 PASS** | **Tỷ lệ vượt qua: 100% (BUILD SUCCESS)** |
 
 ---
 
@@ -172,9 +173,9 @@ GIAI ĐOẠN 1: Fast-Path Engine & Unit Tests [✅ ĐÃ HOÀN THÀNH - ĐẠT 25
   ├── [x] Cập nhật tiêu đề session khi là câu đầu tiên (updateSessionTitleIfDefault)
   ├── [x] Cập nhật Android Client: AiChatModels.kt và AgenticPlayerDispatcher.kt (hỗ trợ PAUSE/RESUME/NEXT khi song == null)
   ├── [x] Bổ sung biến thể "bài tiếp theo" / "bai tiep theo" và fallback cho câu gõ lẫn lộn dấu
-  ├── [x] Viết FastPathEngineTest bao phủ 53 ca biên (53/53 PASS)
+  ├── [x] Viết FastPathEngineTest bao phủ 58 ca biên (58/58 PASS bao gồm 5 ca phủ định không dấu)
   ├── [x] Viết AiChatControllerTest bao phủ 9 ca kiểm thử tích hợp (9/9 PASS)
-  └── [x] Nghiệm thu 62/62 tests với Maven và JDK 21 (BUILD SUCCESS)
+  └── [x] Nghiệm thu 67/67 tests với Maven và JDK 21 (BUILD SUCCESS)
 
 HẬU GIAI ĐOẠN 1: Tinh chỉnh Database & Kích hoạt Metrics [✅ ĐÃ HOÀN THÀNH]
   ├── [x] Cập nhật AbstractAuditEntity: Dùng @PrePersist onPrePersist() bảo toàn createdAt khi đã có giá trị (+5ms)
@@ -187,7 +188,7 @@ GIAI ĐOẠN 2: Model Router & Circuit Breaker [✅ ĐÃ HOÀN THÀNH - ĐẠT 2
   ├── [x] Khai báo io.github.resilience4j:resilience4j-spring-boot3:2.2.0 và spring-boot-starter-aop trong pom.xml
   ├── [x] Khai báo AiRouterProperties (ai.router.*) và cấu hình instance geminiCriticRouter trong application.yaml
   ├── [x] Loại trừ lỗi 400 (Safety block) và 403 khỏi record-exceptions để chống ngắt mạch oan
-  ├── [x] Thiết lập cảnh báo Prometheus Alert độc lập cho lỗi 400/403 và in-stream safety blocks (finishReason=SAFETY)
+  ├── [ ] Thiết lập cảnh báo Prometheus Alert độc lập cho lỗi 400/403 và in-stream safety blocks (đã thiết kế rule PromQL increase(), chờ cấu hình hạ tầng)
   ├── [x] Xây dựng ModelRouterService sinh RoutingDecision độc lập (phân làn Music Critic với regex nhạc lý không dấu)
   ├── [x] Tách bạch 2 cờ hạ cấp: degradedByBreaker (chặn lưu cache) và reasoningTierDisabled (cho phép lưu cache)
   ├── [x] Quản lý Permit tại executeAgentLoop với cờ resultRecorded chống double release
@@ -217,4 +218,4 @@ GIAI ĐOẠN 3: Bước Đệm Telemetry & Khung Quyết Định Dữ Liệu [�
 ---
 
 > [!TIP]
-> **Tóm tắt trạng thái:** Lớp 7 đã đạt mốc **75% Code-Complete, Telemetry Instrumented** với **104/104 Unit & Integration tests passed (100% Pass Rate)**. Toàn bộ mã nguồn Backend và Android Client đã được đồng bộ, bảo vệ an toàn với microsecond timestamp, ngắt mạch Resilience4j chuẩn xác, cách ly Watchdog trên Virtual Threads và hạ tầng Telemetry 2 cửa sổ fail-safe. Mốc 100% Production-Ready sẽ được ký duyệt chính thức sau khi thu thập đủ dữ liệu thực tế ($N \ge 5.000$ lượt), kiểm chứng ngữ nghĩa qua Shadow Mode và thiết lập dashboard kiểm thử tải.
+> **Tóm tắt trạng thái:** Lớp 7 đã đạt mốc **75% Code-Complete, Telemetry Instrumented** với **109/109 Unit & Integration tests passed (100% Pass Rate)**. Toàn bộ mã nguồn Backend và Android Client đã được đồng bộ, bảo vệ an toàn với microsecond timestamp, ngắt mạch Resilience4j chuẩn xác, cách ly Watchdog trên Virtual Threads và hạ tầng Telemetry 2 cửa sổ fail-safe. Mốc 100% Production-Ready sẽ được ký duyệt chính thức sau khi thu thập đủ dữ liệu thực tế ($N \ge 5.000$ lượt), kiểm chứng ngữ nghĩa qua Shadow Mode và thiết lập dashboard kiểm thử tải.

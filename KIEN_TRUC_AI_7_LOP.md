@@ -205,9 +205,9 @@ Lớp 7 là đỉnh cao của kiến trúc tối ưu hóa hiệu năng, giảm t
   * `@Transactional saveFastPathMessages` gom lưu `userMessage` và `aiMessage` (+5ms).
   * `ChatMessage` lưu `sender` dạng `@Enumerated(EnumType.STRING)` trên cột `VARCHAR(16)`. Trong mã ASCII & mọi Collation MySQL chuẩn: `'U'` (85) > `'A'` (65) nên `'USER' > 'AI'`.
   * Sắp xếp đối ngẫu chuẩn xác: `ORDER BY m.createdAt ASC, m.sender DESC` (truy vấn xuôi, USER trước AI) và `ORDER BY m.createdAt DESC, m.sender ASC` (Sliding Window ngược, AI trước USER, sau khi `Collections.reverse()` thì USER luôn đứng trước AI).
-* **Kiểm chứng thực tế Regex & Cảnh báo Bẫy Phủ định:**
-  * Nhờ cấu trúc neo đầu `^`, các câu phủ định không dấu như `"dung tat nhac"`, `"ko dung lai"`, `"cho tat nhac"` **không khớp** `STOP_UNACCENTED` và rơi an toàn xuống LLM. Rủi ro thực tế trong code hiện tại là rất thấp.
-  * Cảnh báo: Tuyệt đối không phỏng đoán chặn tiền tố `"dung "` vì trong tiếng Việt không dấu, `"dung"` vừa là "dừng" vừa là "đừng" — chặn tiền tố sẽ chặn nhầm cả lệnh dừng hợp lệ như `"dung lai"`.
+* **Bảo Chứng Thực Nghiệm Regex (58 Tests) & Phân Tích Nhập Nhằng Ngữ Nghĩa:**
+  * Đã nghiệm thu **58/58 tests PASS** trong `FastPathEngineTest.java` bao phủ đầy đủ 5 ca phủ định không dấu (`"dung tat nhac"`, `"ko dung lai"`, `"cho tat nhac"`, `"ko tat"`, `"dung tam dung"`). Nhờ cấu trúc neo đầu `^` và cuối `$`, các câu này không khớp `STOP_UNACCENTED` và rơi an toàn xuống Agentic Loop.
+  * Cảnh báo bẫy thiết kế: Tuyệt đối không phỏng đoán chặn tiền tố `"dung "` bừa bãi vì trong tiếng Việt không dấu, `"dung"` vừa là "dừng" vừa là "đừng". Các cụm từ nhập nhằng như `"dung phat"` (đừng phát vs dừng phát) hay `"dung tiep"` (dừng tiếp vs đừng tiếp) phải được phân tích dựa trên dữ liệu log truy vấn người dùng thực tế trước khi thêm quy tắc.
 
 ### 7.2. Dynamic Model Router & Resilience4j Circuit Breaker
 * **Định tuyến Mô hình Thông minh:**
@@ -216,11 +216,12 @@ Lớp 7 là đỉnh cao của kiến trúc tối ưu hóa hiệu năng, giảm t
 * **Ngắt Mạch Resilience4j & First-Token Watchdog 8000ms:**
   * Cấu hình instance `geminiCriticRouter` (sliding window 120s, failure rate 50%, wait in open 30s).
   * Phân cấp ngoại lệ `UpstreamAiException` để Circuit Breaker ghi nhận chính xác mọi lỗi I/O của Gemini; loại trừ 400 (Safety block) và 403 khỏi `record-exceptions` chống ngắt mạch oan.
-  * **Phân định Socket Timeout (15s vs 90s):** First-token Watchdog 8000ms thực thi qua `CompletableFuture.supplyAsync(..., aiStreamingExecutor)` trên Virtual Threads và **bắt buộc gọi qua `geminiRestClient` (15s read timeout)**. Vòng lặp Agent hiện tại gọi non-streaming `:generateContent` (maxOutputTokens 800); khi Watchdog cancel sau 8s, kết nối HTTP chỉ treo tối đa 7s (15s - 8s) rồi tự đóng, không dùng `geminiStreamRestClient` (90s).
+  * **Phân định Socket Timeout (15s vs 90s) & Cơ chế `future.cancel(true)`:** First-token Watchdog 8000ms thực thi qua `CompletableFuture.supplyAsync(..., aiStreamingExecutor)` trên Virtual Threads và **bắt buộc gọi qua `geminiRestClient` (15s read timeout)**. `readTimeout = 15s` là SO_TIMEOUT (idle read timeout); lệnh `future.cancel(true)` giải phóng luồng gọi của ứng dụng nhưng thread đọc I/O bên dưới của `HttpURLConnection` vẫn chờ đến khi socket timeout (tối đa thêm 7s trong điều kiện **0-byte starvation**, tức Google không trả về byte nào). Tuyệt đối không dùng `geminiStreamRestClient` (90s).
+  * **Độ trễ Gemini 2.5 Pro Thinking Budget & Hiệu chỉnh Ngưỡng:** 8000ms là ngưỡng khởi điểm; mô hình Pro có internal thinking budget nên TTFT câu hỏi phức tạp có thể vượt quá 8s. Cần giám sát p50/p95/p99 của `ai.latency.ttft` để tinh chỉnh ngưỡng trước khi sản xuất.
   * **Đề xuất Two-Phase Client:** Khi hỗ trợ full-streaming cho Pro, tách thành 2 giai đoạn: Giai đoạn 1 giám sát first-token bằng client ngắn, Giai đoạn 2 stream dữ liệu bằng client dài (90s) chống ngắt giữa chừng.
-  * **Giám sát Safety Blocks & Alert độc lập:** Xử lý in-stream safety block HTTP 200 (`finishReason=SAFETY`, `promptFeedback.blockReason`) như HTTP OK đối với Breaker, đồng thời khai báo counter `ai.gemini.client.errors` (400/403) và `ai.gemini.safety.blocks` với alert Prometheus độc lập (ngưỡng cần hiệu chỉnh theo baseline lưu lượng thực).
+  * **Giám sát Safety Blocks & Alert độc lập qua PromQL `increase()`:** Xử lý in-stream safety block HTTP 200 (`finishReason=SAFETY`, `promptFeedback.blockReason`) như HTTP OK đối với Breaker, đồng thời khai báo counter `ai.gemini.client.errors` (400/403) và `ai.gemini.safety.blocks` (giới hạn cardinality tag `reason`) với cảnh báo Prometheus Alert độc lập theo cú pháp chuẩn: `sum(increase(ai_gemini_client_errors_total{status=~"400|403"}[5m])) + sum(increase(ai_gemini_safety_blocks_total[5m])) > 5`.
 * **Tinh chỉnh Fallback Guard (Read-only vs Side-effect):**
-  * Cho phép fallback an toàn về Flash khi chỉ gọi các tool đọc (`search_music_library`).
+  * Cho phép fallback an toàn về Flash khi chỉ gọi các tool đọc (`search_music_library`, `get_top_trending_songs`, `get_user_recommendations`).
   * Chặn đứng fallback khi đã gọi tool có tác dụng phụ (`trigger_player_action`, `propose_ai_playlist`) để ngăn lỗi Double Mutation.
 
 ### 7.3. CanCacheEvaluator & Hạ Tầng Telemetry Ngầm
@@ -232,7 +233,7 @@ Lớp 7 là đỉnh cao của kiến trúc tối ưu hóa hiệu năng, giảm t
   * Phân biệt rõ rệt giữa lặp lại liên người dùng (`ai.cache.exact_repeat_hits` / `ai.cache.exact_repeat_24h_hits`) và cùng người dùng thử lại (`ai.cache.self_repeat_hits` / `ai.cache.self_repeat_24h_hits`).
   * Tách riêng người dùng ẩn danh bằng metric `ai.cache.anonymous_prompts` và không tính vào cross-user repeat cache để bảo vệ tính chính xác của tỷ lệ lặp lại tiềm năng.
   * Hoàn toàn fail-safe: Lỗi telemetry không bao giờ làm gián đoạn luồng đàm thoại.
-  * **Minh bạch hóa giới hạn đo lường:** Ghi nhận sai lệch biên câu hỏi trống ($< 0.01\%$), giới hạn 50k W-TinyLFU và đặc thù in-memory single-instance càng củng cố tính chất "cận dưới thận trọng" (Strict Lower Bound) của tỷ lệ lặp.
+  * **Minh bạch hóa giới hạn đo lường:** Ghi nhận sai lệch biên câu hỏi trống ($< 0.01\%$), giới hạn 50k W-TinyLFU và đặc thù in-memory single-instance càng củng cố tính chất "cận dưới thận trọng" (Strict Lower Bound) của tỷ lệ lặp. Khi triển khai cụm đa instance, sử dụng Prometheus aggregation hoặc Redis nguyên tử `SET telemetry:24h:{sha256} {userId} EX 86400 NX` (thay thế HyperLogLog) để đếm lặp lại chéo.
 
 ### 7.4. Khung Quyết Định Kiến Trúc Dựa Trên Dữ Liệu 3 Nhánh
 * Thu thập dữ liệu thực tế với cỡ mẫu đủ lớn $N \ge 5.000$ lượt hợp lệ (hoặc tối thiểu 3.000 lượt trên Staging/Production trong 14 ngày) để bảo đảm lực thống kê (Statistical Power) cho ngưỡng 1% và 3%:
@@ -259,7 +260,7 @@ Lớp 7 là đỉnh cao của kiến trúc tối ưu hóa hiệu năng, giảm t
 
 ## 9. BƯỚC TIẾP THEO ĐỂ ĐẠT 100% PRODUCTION-READY
 
-Sau khi hoàn thành xuất sắc 7 lớp trên (**104/104 Tests PASS — 75% Code-Complete, Telemetry Instrumented**; tham chiếu Single Source of Truth tại `KE_HOACH_LOP_7_CACHE_ROUTER.md`):
+Sau khi hoàn thành xuất sắc 7 lớp trên (**109/109 Tests PASS — 75% Code-Complete, Telemetry Instrumented**; tham chiếu Single Source of Truth tại `KE_HOACH_LOP_7_CACHE_ROUTER.md`):
 1. **Lớp 7 (Vận hành & Thu thập Telemetry Thực tế):**
    * Theo dõi chỉ số `ai.cache.exact_repeat_hits`, `ai.cache.exact_repeat_24h_hits` và `ai.latency.fastpath` trên Prometheus/Grafana với mẫu $N \ge 5.000$ lượt để ra quyết định ký duyệt hoặc triển khai Vector Cache.
    * Chạy bài test tích hợp DB thật (`AiChatRepositoryIntegrationTest` với Testcontainers MySQL) kiểm chứng Tie-Breaker collation.
