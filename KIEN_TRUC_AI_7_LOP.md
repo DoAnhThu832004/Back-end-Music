@@ -200,12 +200,14 @@ Lớp 7 là đỉnh cao của kiến trúc tối ưu hóa hiệu năng, giảm t
 ### 7.1. Fast-Path Command Engine (< 10ms)
 * **Vị trí trước Session Lock:** Chạy trước `checkAndLockSession` để người dùng có thể gửi lệnh *"tạm dừng"* ngay lập tức mà không bị chặn khi bot đang stream câu trả lời dài.
 * **Regex 2 Tầng Siêu Tốc & Bổ sung "Bài Tiếp Theo":** Quét có dấu (NFC) và không dấu (`VietnameseTextNormalizer.stripDiacritics`), xử lý chào hỏi Turn 1, giới thiệu danh tính và lệnh Player Transport (`PAUSE`, `RESUME`, `NEXT` với phản hồi đồng bộ *"Đã gửi lệnh chuyển bài."*). Hỗ trợ đầy đủ biến thể *"bài tiếp theo"* / *"bai tiep theo"*.
-* **Độ chính xác Microsecond & Dual Tie-Breaker (String Lexicographical):**
+* **Độ chính xác Microsecond & Dual Tie-Breaker (String Lexicographical & MySQL Collation):**
   * Migration Flyway `V5` nâng cấp `created_at` / `updated_at` lên `DATETIME(6)`.
   * `@Transactional saveFastPathMessages` gom lưu `userMessage` và `aiMessage` (+5ms).
-  * `ChatMessage` lưu `sender` dạng `@Enumerated(EnumType.STRING)` trên cột `VARCHAR(16)`. Trong mã ASCII: `'U'` (85) > `'A'` (65) nên `'USER' > 'AI'`.
+  * `ChatMessage` lưu `sender` dạng `@Enumerated(EnumType.STRING)` trên cột `VARCHAR(16)`. Trong mã ASCII & mọi Collation MySQL chuẩn: `'U'` (85) > `'A'` (65) nên `'USER' > 'AI'`.
   * Sắp xếp đối ngẫu chuẩn xác: `ORDER BY m.createdAt ASC, m.sender DESC` (truy vấn xuôi, USER trước AI) và `ORDER BY m.createdAt DESC, m.sender ASC` (Sliding Window ngược, AI trước USER, sau khi `Collections.reverse()` thì USER luôn đứng trước AI).
-* **Phân tích Rủi ro & Chiến lược Phòng thủ Phủ định Không Dấu:** Ghi nhận rủi ro khi Tier 2 mở rộng bề mặt so khớp; đề xuất bổ sung bộ lọc phủ định không dấu (`dung tat nhac`, `ko dung lai`) tại Bước 2 trong đợt refactor tiếp theo.
+* **Kiểm chứng thực tế Regex & Cảnh báo Bẫy Phủ định:**
+  * Nhờ cấu trúc neo đầu `^`, các câu phủ định không dấu như `"dung tat nhac"`, `"ko dung lai"`, `"cho tat nhac"` **không khớp** `STOP_UNACCENTED` và rơi an toàn xuống LLM. Rủi ro thực tế trong code hiện tại là rất thấp.
+  * Cảnh báo: Tuyệt đối không phỏng đoán chặn tiền tố `"dung "` vì trong tiếng Việt không dấu, `"dung"` vừa là "dừng" vừa là "đừng" — chặn tiền tố sẽ chặn nhầm cả lệnh dừng hợp lệ như `"dung lai"`.
 
 ### 7.2. Dynamic Model Router & Resilience4j Circuit Breaker
 * **Định tuyến Mô hình Thông minh:**
@@ -214,8 +216,9 @@ Lớp 7 là đỉnh cao của kiến trúc tối ưu hóa hiệu năng, giảm t
 * **Ngắt Mạch Resilience4j & First-Token Watchdog 8000ms:**
   * Cấu hình instance `geminiCriticRouter` (sliding window 120s, failure rate 50%, wait in open 30s).
   * Phân cấp ngoại lệ `UpstreamAiException` để Circuit Breaker ghi nhận chính xác mọi lỗi I/O của Gemini; loại trừ 400 (Safety block) và 403 khỏi `record-exceptions` chống ngắt mạch oan.
-  * **Phân định Socket Timeout (15s vs 90s):** First-token Watchdog 8000ms thực thi qua `CompletableFuture.supplyAsync(..., aiStreamingExecutor)` trên Virtual Threads và **bắt buộc gọi qua `geminiRestClient` (15s read timeout)**. Khi Watchdog cancel sau 8s, kết nối HTTP chỉ treo tối đa 7s (15s - 8s) rồi tự đóng, không dùng `geminiStreamRestClient` (90s).
-  * **Giám sát Safety Blocks & Alert độc lập:** Xử lý in-stream safety block HTTP 200 (`promptFeedback.blockReason`, `finishReason=SAFETY`) như HTTP OK đối với Breaker, đồng thời thiết lập cảnh báo Prometheus độc lập `sum(rate(ai_gemini_client_errors_total{status=~"400|403"}[5m])) > threshold`.
+  * **Phân định Socket Timeout (15s vs 90s):** First-token Watchdog 8000ms thực thi qua `CompletableFuture.supplyAsync(..., aiStreamingExecutor)` trên Virtual Threads và **bắt buộc gọi qua `geminiRestClient` (15s read timeout)**. Vòng lặp Agent hiện tại gọi non-streaming `:generateContent` (maxOutputTokens 800); khi Watchdog cancel sau 8s, kết nối HTTP chỉ treo tối đa 7s (15s - 8s) rồi tự đóng, không dùng `geminiStreamRestClient` (90s).
+  * **Đề xuất Two-Phase Client:** Khi hỗ trợ full-streaming cho Pro, tách thành 2 giai đoạn: Giai đoạn 1 giám sát first-token bằng client ngắn, Giai đoạn 2 stream dữ liệu bằng client dài (90s) chống ngắt giữa chừng.
+  * **Giám sát Safety Blocks & Alert độc lập:** Xử lý in-stream safety block HTTP 200 (`finishReason=SAFETY`, `promptFeedback.blockReason`) như HTTP OK đối với Breaker, đồng thời khai báo counter `ai.gemini.client.errors` (400/403) và `ai.gemini.safety.blocks` với alert Prometheus độc lập (ngưỡng cần hiệu chỉnh theo baseline lưu lượng thực).
 * **Tinh chỉnh Fallback Guard (Read-only vs Side-effect):**
   * Cho phép fallback an toàn về Flash khi chỉ gọi các tool đọc (`search_music_library`).
   * Chặn đứng fallback khi đã gọi tool có tác dụng phụ (`trigger_player_action`, `propose_ai_playlist`) để ngăn lỗi Double Mutation.
@@ -229,6 +232,7 @@ Lớp 7 là đỉnh cao của kiến trúc tối ưu hóa hiệu năng, giảm t
   * Phân biệt rõ rệt giữa lặp lại liên người dùng (`ai.cache.exact_repeat_hits` / `ai.cache.exact_repeat_24h_hits`) và cùng người dùng thử lại (`ai.cache.self_repeat_hits` / `ai.cache.self_repeat_24h_hits`).
   * Tách riêng người dùng ẩn danh bằng metric `ai.cache.anonymous_prompts` và không tính vào cross-user repeat cache để bảo vệ tính chính xác của tỷ lệ lặp lại tiềm năng.
   * Hoàn toàn fail-safe: Lỗi telemetry không bao giờ làm gián đoạn luồng đàm thoại.
+  * **Minh bạch hóa giới hạn đo lường:** Ghi nhận sai lệch biên câu hỏi trống ($< 0.01\%$), giới hạn 50k W-TinyLFU và đặc thù in-memory single-instance càng củng cố tính chất "cận dưới thận trọng" (Strict Lower Bound) của tỷ lệ lặp.
 
 ### 7.4. Khung Quyết Định Kiến Trúc Dựa Trên Dữ Liệu 3 Nhánh
 * Thu thập dữ liệu thực tế với cỡ mẫu đủ lớn $N \ge 5.000$ lượt hợp lệ (hoặc tối thiểu 3.000 lượt trên Staging/Production trong 14 ngày) để bảo đảm lực thống kê (Statistical Power) cho ngưỡng 1% và 3%:
@@ -255,9 +259,10 @@ Lớp 7 là đỉnh cao của kiến trúc tối ưu hóa hiệu năng, giảm t
 
 ## 9. BƯỚC TIẾP THEO ĐỂ ĐẠT 100% PRODUCTION-READY
 
-Sau khi hoàn thành xuất sắc 7 lớp trên (**104/104 Tests PASS — 75% Code-Complete, Telemetry Instrumented**):
+Sau khi hoàn thành xuất sắc 7 lớp trên (**104/104 Tests PASS — 75% Code-Complete, Telemetry Instrumented**; tham chiếu Single Source of Truth tại `KE_HOACH_LOP_7_CACHE_ROUTER.md`):
 1. **Lớp 7 (Vận hành & Thu thập Telemetry Thực tế):**
    * Theo dõi chỉ số `ai.cache.exact_repeat_hits`, `ai.cache.exact_repeat_24h_hits` và `ai.latency.fastpath` trên Prometheus/Grafana với mẫu $N \ge 5.000$ lượt để ra quyết định ký duyệt hoặc triển khai Vector Cache.
+   * Chạy bài test tích hợp DB thật (`AiChatRepositoryIntegrationTest` với Testcontainers MySQL) kiểm chứng Tie-Breaker collation.
 2. **Lớp 8 (Observability & CI/CD Evals):**
    * *LLM Tracing:* Tích hợp OpenTelemetry / Micrometer Tracing để theo dõi từng span của Multi-step Agent.
    * *Automated Evals:* Duy trì bộ kiểm thử tự động `AiCompanionEvaluationSuiteTest` trong pipeline CI/CD mỗi khi cập nhật Prompt!

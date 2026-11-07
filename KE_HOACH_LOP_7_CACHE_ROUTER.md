@@ -1,11 +1,14 @@
 # ⚡ KẾ HOẠCH NÂNG CẤP LỚP 7: CACHE & MODEL ROUTER
 > **Dự án:** `identity-service-main` (Spring Boot 3 + Google Gemini) & Android Client App  
 > **Mục tiêu:** Nâng cấp Lớp 7 từ **25%** lên **75% Code-Complete, Telemetry Instrumented** và chuẩn bị nghiệm thu **100% Production-Ready** qua dữ liệu thực tế  
-> **Trạng thái:** 🚀 *Hiệu chuẩn lần 16 — Nghiệm thu toàn diện Giai đoạn 1 & Giai đoạn 2 (75% Code-Complete, Telemetry Instrumented, 104/104 Unit & Integration tests passed, 100% Pass Rate). Hạ tầng Telemetry 2 cửa sổ (30m & 24h), Persona Isolation và CanCacheEvaluator Giai đoạn 3 đã sẵn sàng thu thập số liệu thực tế để ra quyết định kiến trúc.*
+> **Trạng thái:** 🚀 *Hiệu chuẩn lần 17 — Nguồn Sự Thật Duy Nhất (Single Source of Truth) cho tiến độ, bảng test 104/104 tests passed 100%, và checklist công việc. Làm rõ non-streaming socket 15s vs two-phase streaming, kiểm chứng regex phủ định không dấu an toàn nhờ neo đầu, khai báo metric in-stream safety blocks, ghi nhận biên prompt trống & giới hạn 50k Caffeine 24h, bổ sung test tích hợp DB thật cho Tie-Breaker collation.*
 
 ---
 
 ## 📌 1. ĐÁNH GIÁ HIỆN TRẠNG & PHÂN RÃ TIẾN ĐỘ CHUẨN XÁC
+
+> [!NOTE]
+> **Vai Trò Nguồn Sự Thật Duy Nhất (Single Source of Truth):** Tài liệu này là cơ sở chuẩn mực duy nhất để theo dõi tiến độ, ma trận phân bổ kiểm thử (104/104 tests) và danh mục checklist công việc của toàn bộ Lớp 7 (Cache & Model Router). Mọi tài liệu kiến trúc khác ([THIET_KE_CHI_TIET_LOP_7_CACHE_ROUTER.md](THIET_KE_CHI_TIET_LOP_7_CACHE_ROUTER.md) và [KIEN_TRUC_AI_7_LOP.md](KIEN_TRUC_AI_7_LOP.md)) đều tham chiếu đồng bộ theo tài liệu này.
 
 Tiến độ của Lớp 7 được tính toán minh bạch dựa trên 4 thành phần kỹ thuật (mỗi thành phần chiếm trọng số 25%):
 
@@ -55,16 +58,18 @@ Tiến độ của Lớp 7 được tính toán minh bạch dựa trên 4 thành
   * Khắc phục triệt để Direct Field Access của Spring Data JPA reflection bằng cách dùng `@PrePersist onPrePersist()` và `@PreUpdate onPreUpdate()` thuần trong `AbstractAuditEntity.java`.
   * Migration Flyway `V5__alter_chat_tables_datetime_precision.sql` nâng cấp `created_at` và `updated_at` sang `DATETIME(6)`, đồng thời **bảo toàn thuộc tính `DEFAULT CURRENT_TIMESTAMP(6) ON UPDATE CURRENT_TIMESTAMP(6)`** cho cột `updated_at`.
   * Gom lưu tin nhắn `userMessage` và `aiMessage` (+5ms) vào cùng một transaction qua phương thức `@Transactional saveFastPathMessages(...)` trong `AiChatSessionService.java`.
-* **Tính Đối Ngẫu Tie-Breaker theo Thứ Tự Bảng Chữ Cái (String Lexicographical):**
+* **Tính Đối Ngẫu Tie-Breaker theo Thứ Tự Bảng Chữ Cái (String Lexicographical) & MySQL Collation:**
   * `ChatMessage` lưu `@Enumerated(EnumType.STRING)` trên cột `VARCHAR(16)` với giá trị `'USER'` và `'AI'`.
-  * Trong bảng mã ASCII: `'U'` (ASCII 85) đứng sau `'A'` (ASCII 65) $\rightarrow$ `'USER' > 'AI'`.
+  * Trong bảng mã ASCII & Collation MySQL chuẩn (`utf8mb4_0900_ai_ci`, `utf8mb4_unicode_ci`): `'U'` (ASCII 85) đứng sau `'A'` (ASCII 65) $\rightarrow$ `'USER' > 'AI'`.
   * Truy vấn xuôi (ASC - Hiển thị UI): `ORDER BY m.createdAt ASC, m.sender DESC` (USER đứng trước AI).
   * Truy vấn ngược (DESC - Sliding Window): `ORDER BY m.createdAt DESC, m.sender ASC` (AI trước USER, đảo ngược bởi `Collections.reverse()` thì USER luôn trước AI).
-* **Phản Hồi An Toàn và Tương Thích:**
+  * Bổ sung vào checklist bài test tích hợp DB thật (`AiChatRepositoryIntegrationTest` với Testcontainers MySQL) để bảo chứng 100%.
+* **Phản Hồi An Toàn, Tương Thích & Kiểm Chứng Thực Tế Regex:**
   * Kiểm tra an toàn `Boolean.TRUE.equals(request.clientSupportsTransportActions())` chống Unboxing NPE.
   * Phản hồi đồng bộ: `"Đã tạm dừng phát nhạc."` cho `PAUSE`, `"Đã tiếp tục phát nhạc."` cho `RESUME`, và `"Đã gửi lệnh chuyển bài."` cho `NEXT` (kèm `.autoExecute(true)`).
   * Khớp bổ sung biến thể `"bài tiếp theo"` / `"bai tiep theo"` và tầng fallback không dấu cho câu gõ lẫn lộn dấu (partially accented).
-  * **Lưu ý phòng thủ:** Đã ghi nhận rủi ro câu phủ định không dấu (`dung tat nhac`, `ko dung lai`) để bổ sung bộ lọc phủ định không dấu ở đợt refactor kế tiếp.
+  * **Kiểm chứng thực tế Regex Phủ định Không Dấu:** Nhờ cấu trúc neo đầu `^`, các câu phủ định gõ không dấu như `"dung tat nhac"`, `"ko dung lai"`, `"cho tat nhac"` **không khớp** `STOP_UNACCENTED` và rơi xuống LLM an toàn.
+  * **Cảnh báo bẫy thiết kế:** Tuyệt đối không phỏng đoán chặn tiền tố `"dung "` bừa bãi vì trong tiếng Việt không dấu, `"dung"` vừa là "dừng" vừa là "đừng" — chặn tiền tố sẽ chặn nhầm cả lệnh dừng hợp lệ như `"dung lai"`, `"dung nhac"`. Mọi thay đổi logic ở Bước 2 bắt buộc phải đi kèm bộ test case đối chuẩn tự động.
 
 ---
 
@@ -72,11 +77,12 @@ Tiến độ của Lớp 7 được tính toán minh bạch dựa trên 4 thành
 * **Loại Trừ Lỗi Client (400/403) Khỏi Circuit Breaker:**
   * `RestClientResponseException` được thu hẹp lại: Chỉ ghi nhận `UpstreamAiException`, `HttpServerErrorException` (5xx), `ResourceAccessException` và `HttpClientErrorException.TooManyRequests` (429) vào `record-exceptions`.
   * Đưa `HttpClientErrorException.BadRequest` (400 - Safety block của Google, prompt vi phạm) và `Forbidden` (403) vào `ignore-exceptions`. Điều này ngăn chặn việc Circuit Breaker cho persona `MUSIC_CRITIC` bị nảy ngắt mạch oan uổng khi người dùng gửi prompt vi phạm chính sách của Google.
-  * Giám sát lỗi 400/403 và in-stream safety blocks (`finishReason=SAFETY`) qua Prometheus Alerting riêng biệt.
-* **Vòng Đời Permit, First-Token Watchdog 8000ms & Socket Timeout (15s):**
+  * Khai báo counter `ai.gemini.client.errors` (400/403) và `ai.gemini.safety.blocks` (in-stream HTTP 200 finishReason=SAFETY) phục vụ Prometheus Alerting độc lập.
+* **Vòng Đời Permit, Watchdog 8000ms & Socket Timeout (15s):**
   * Cấp permit qua `tryAcquirePermission()`, bảo vệ chống double-release bằng `AtomicBoolean resultRecorded`.
   * Watchdog 8000ms thực thi qua `CompletableFuture.supplyAsync(..., aiStreamingExecutor)` trên Virtual Threads, cách ly hoàn toàn với ForkJoinPool.
-  * Chỉ định gọi qua `geminiRestClient` (15s read timeout), socket tự đóng sau tối đa 7s nếu Watchdog cancel, **không dùng `geminiStreamRestClient` (90s)**.
+  * **Phân định rõ kỹ thuật:** Hiện tại vòng lặp Multi-step Agent gọi non-streaming `:generateContent`, `readTimeout = 15s` là socket SO_TIMEOUT cho toàn bộ phản hồi của một iteration (`maxOutputTokens = 800`). Watchdog 8s ngắt kịp thời, socket tự đóng sau tối đa 7s (15s - 8s), **tuyệt đối không dùng `geminiStreamRestClient` (90s)**.
+  * **Đề xuất Two-Phase Client:** Khi nâng cấp Pro sang full-streaming, tách 2 giai đoạn: Watchdog 8s giám sát first-token qua client ngắn, sau đó chuyển sang client stream dài (90s hoặc inter-chunk timeout 15s) tránh ngắt giữa chừng khi Pro sinh phản hồi dài.
 * **Tinh Chỉnh Fallback Guard An Toàn:**
   * Cho phép fallback an toàn về Flash khi chỉ gọi các tool đọc (`search_music_library`, `get_top_trending_songs`, `get_user_recommendations`).
   * Chặn đứng fallback khi đã gọi tool có tác dụng phụ (`trigger_player_action`, `propose_ai_playlist`) để ngăn lỗi Double Mutation.
@@ -93,6 +99,7 @@ Tiến độ của Lớp 7 được tính toán minh bạch dựa trên 4 thành
   * Chuẩn hóa Canonical Prompt: NFC $\rightarrow$ bỏ dấu (`VietnameseTextNormalizer.stripDiacritics`) $\rightarrow$ cắt dấu câu cuối $\rightarrow$ gộp khoảng trắng thừa $\rightarrow$ lowercase $\rightarrow$ SHA-256 tích hợp Persona.
   * Tách biệt người dùng ẩn danh: Khi `userId` rỗng/null, ghi nhận `ai.cache.anonymous_prompts` và không lưu vào repeat cache nhằm loại trừ sai lệch dữ liệu lặp lại liên người dùng.
   * Hoàn toàn bọc trong khối `try-catch` **fail-safe**, không bao giờ làm gián đoạn luồng đàm thoại.
+  * **Minh bạch Hóa Đo lường Telemetry:** Prompt rỗng được thoát sớm (sai lệch biên $< 0.01\%$); giới hạn 50k W-TinyLFU và đặc thù in-memory single-instance làm tăng tính chất "cận dưới thận trọng" (Strict Lower Bound) của số đo potential cache hit rate.
 
 ---
 
@@ -203,6 +210,7 @@ GIAI ĐOẠN 3: Bước Đệm Telemetry & Khung Quyết Định Dữ Liệu [�
   │     ├── Nếu 1% - 3%: Chạy thử nghiệm SHADOW MODE trên 10% lưu lượng trong 7 ngày
   │     └── Nếu < 1%: Bắt buộc kiểm chứng qua Shadow Mode hoặc Embedding Cosine Similarity; ký duyệt nếu ngữ nghĩa cũng < 1%
   ├── [ ] Bổ sung điều kiện loại trừ get_top_trending_songs khỏi Semantic Cache ở Bước 8
+  ├── [ ] Bổ sung bài test tích hợp DB thật (AiChatRepositoryIntegrationTest với Testcontainers MySQL) kiểm chứng Tie-Breaker collation
   └── [ ] Thiết lập Dashboard Prometheus/Grafana giám sát ai.cache.exact_repeat_hits, ai.cache.exact_repeat_24h_hits và kiểm thử tải
 ```
 
