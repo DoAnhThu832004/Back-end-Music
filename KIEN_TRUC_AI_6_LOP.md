@@ -218,15 +218,16 @@ Lớp 7 là đỉnh cao của kiến trúc tối ưu hóa hiệu năng, giảm t
   * Chặn đứng fallback khi đã gọi tool có tác dụng phụ (`trigger_player_action`, `propose_ai_playlist`) để ngăn lỗi Double Mutation.
 
 ### 7.3. CanCacheEvaluator & Hạ Tầng Telemetry Ngầm
-* **8 Cổng Kiểm Định Cache:** Quét có dấu và không dấu phân loại 8 lý do BYPASS: `EMPTY_PROMPT`, `HISTORY`, `HAS_SONG_CONTEXT`, `PERSONAL`, `PII`, `ANAPHORA`, `TEMPORAL`, `DANGLING_REF`.
+* **8 Cổng Kiểm Định Cache:** Quét có dấu (cờ `(?U)`) và không dấu phân loại 8 lý do BYPASS: `EMPTY_PROMPT`, `HISTORY`, `HAS_SONG_CONTEXT`, `PERSONAL`, `PII`, `ANAPHORA`, `TEMPORAL`, `DANGLING_REF`. Khắc phục triệt để lỗi false-positive bắt nhầm "nhạc Anh" (nhạc nước Anh / tiếng Anh) thành dữ liệu cá nhân.
 * **TelemetryService (Caffeine 50k, 30m):**
   * Chuẩn hóa Canonical Prompt $\rightarrow$ SHA-256.
-  * Phân biệt rõ rệt giữa lặp lại liên người dùng (`ai.cache.exact_repeat_hits`) và cùng người dùng thử lại (`ai.cache.self_repeat_hits`).
+  * Phân biệt rõ rệt giữa lặp lại liên người dùng (`ai.cache.exact_repeat_hits`) và cùng người dùng thử lại (`ai.cache.self_repeat_hits`). Cô lập người dùng ẩn danh bằng UUID theo lượt để không gộp nhầm thành cùng một người.
   * Hoàn toàn fail-safe: Lỗi telemetry không bao giờ làm gián đoạn luồng đàm thoại.
 
-### 7.4. Khung Quyết Định Kiến Trúc Dựa Trên Dữ Liệu (100% Production-Ready)
+### 7.4. Khung Quyết Định Kiến Trúc Dựa Trên Dữ Liệu 3 Nhánh
 * Thu thập dữ liệu thực tế $N \ge 1.000$ lượt trên Production/Staging:
-  * **Nếu Tỷ lệ Lặp lại Độc lập $\ge 3\%$:** Triển khai Hệ thống Vector Cache 5 cổng.
+  * **Nếu Tỷ lệ Lặp lại Độc lập $\ge 3\%$:** Triển khai Hệ thống Vector Cache 5 cổng + Event Invalidation.
+  * **Nếu Tỷ lệ Lặp lại từ $1\% - 3\%$:** Kích hoạt chế độ **SHADOW MODE** trên 10% lưu lượng trong 7 ngày để đo lường độ trễ và mức tiết kiệm token thực tế trước khi cấp phát tài nguyên cho Vector DB.
   * **Nếu Tỷ lệ Lặp lại Độc lập $< 1\%$:** **Ký duyệt (Sign-off) Nghiệm thu 100% Production-Ready mà KHÔNG cần Semantic Cache**. Tiết kiệm bộ nhớ RAM, CPU và giảm chi phí vận hành (Pragmatic Engineering).
 
 ---
@@ -247,9 +248,9 @@ Lớp 7 là đỉnh cao của kiến trúc tối ưu hóa hiệu năng, giảm t
 
 ## 9. BƯỚC TIẾP THEO ĐỂ ĐẠT 100% PRODUCTION-READY
 
-Sau khi hoàn thành xuất sắc 7 lớp trên (**90/90 Tests PASS**):
-1. **Lớp 7 (Vận hành & Thu thập Telemetry):**
-   * Theo dõi chỉ số `ai.cache.exact_repeat_hits` và `ai.latency.fastpath` trên Prometheus/Grafana để ra quyết định ký duyệt hoặc triển khai Vector Cache.
+Sau khi hoàn thành xuất sắc 7 lớp trên (**91/91 Tests PASS — 75% Code-Complete**):
+1. **Lớp 7 (Vận hành & Thu thập Telemetry Thực tế):**
+   * Theo dõi chỉ số `ai.cache.exact_repeat_hits` và `ai.latency.fastpath` trên Prometheus/Grafana với mẫu $N \ge 1.000$ lượt để ra quyết định ký duyệt hoặc triển khai Vector Cache.
 2. **Lớp 8 (Observability & CI/CD Evals):**
    * *LLM Tracing:* Tích hợp OpenTelemetry / Micrometer Tracing để theo dõi từng span của Multi-step Agent.
    * *Automated Evals:* Duy trì bộ kiểm thử tự động `AiCompanionEvaluationSuiteTest` trong pipeline CI/CD mỗi khi cập nhật Prompt!

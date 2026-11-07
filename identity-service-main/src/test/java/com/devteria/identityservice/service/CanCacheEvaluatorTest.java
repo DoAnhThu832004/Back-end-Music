@@ -127,5 +127,10 @@ class CanCacheEvaluatorTest {
         CacheEvaluationResult res3 = evaluator.evaluate("Giải thích khái niệm nhịp 4/4 trong âm nhạc", null, false);
         assertEquals(CacheScope.GENERAL, res3.scope());
         assertEquals(CacheBypassReason.NONE, res3.bypassReason());
+
+        // Kiểm tra chống false positive: "Nhạc Anh" (nhạc nước Anh/tiếng Anh) KHÔNG bị bắt nhầm thành PERSONAL
+        CacheEvaluationResult res4 = evaluator.evaluate("Mở cho tôi nghe nhạc Anh nổi tiếng", null, false);
+        assertEquals(CacheScope.GENERAL, res4.scope());
+        assertEquals(CacheBypassReason.NONE, res4.bypassReason());
     }
 }

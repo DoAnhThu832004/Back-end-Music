@@ -56,9 +56,12 @@ resilience4j:
         permitted-number-of-calls-in-half-open-state: 2
         record-exceptions:
           - com.devteria.identityservice.exception.UpstreamAiException
-          - org.springframework.web.client.RestClientResponseException
+          - org.springframework.web.client.HttpServerErrorException
           - org.springframework.web.client.ResourceAccessException
+          - org.springframework.web.client.HttpClientErrorException$TooManyRequests
         ignore-exceptions:
           - org.apache.catalina.connector.ClientAbortException
           - org.springframework.web.context.request.async.AsyncRequestNotUsableException
+          - org.springframework.web.client.HttpClientErrorException$BadRequest
+          - org.springframework.web.client.HttpClientErrorException$Forbidden
 

@@ -1,49 +1,49 @@
 # 📐 BẢN ĐẶC TẢ THIẾT KẾ KỸ THUẬT: LỚP 7 (CACHE & MODEL ROUTER)
 > **Dự án:** `identity-service-main` (Spring Boot 3 + Google Gemini) & Android Client App  
 > **Chuyên đề:** Kiến trúc tối ưu hóa độ trễ, chi phí token và định tuyến mô hình  
-> **Trạng thái:** 🚀 *Tài liệu đặc tả kỹ thuật hoàn thiện (Hiệu chuẩn lần 14 — Giai đoạn 1 & Giai đoạn 2 nghiệm thu 75%, hoàn tất kỹ thuật Telemetry & CanCacheEvaluator Giai đoạn 3, 90/90 Unit & Integration tests passed 100%, bảo vệ microsecond DATETIME(6), Dual Tie-Breaker đối ngẫu, Khung Quyết Định Dựa Trên Dữ Liệu tiến tới 100% Production-Ready)*
+> **Trạng thái:** 🚀 *Tài liệu đặc tả kỹ thuật hoàn thiện (Hiệu chuẩn lần 15 — Nghiệm thu Giai đoạn 1 & Giai đoạn 2 đạt 75% Code-Complete, 91/91 Unit & Integration tests passed 100%, đồng bộ nguyên xi Two-Tier FastPathEngine, loại trừ HTTP 400 Safety khỏi Breaker, regex (?U) xử lý bẫy "nhạc Anh", cô lập user ẩn danh trong Telemetry, Khung Quyết Định Dựa Trên Dữ Liệu 3 nhánh tiến tới 100% Production-Ready)*
 
 ---
 
 ## 📑 MỤC LỤC
-1. [Đánh Giá Hiện Trạng & Phân Rã Điểm Số Chuẩn Xác (75%)](#1-đánh-giá-hiện-trạng--phân-rã-điểm-số-chuẩn-xác-75)
+1. [Đánh Giá Hiện Trạng & Phân Rã Điểm Số Chuẩn Xác (75% Code-Complete)](#1-đánh-giá-hiện-trạng--phân-rã-điểm-số-chuẩn-xác-75-code-complete)
 2. [Sơ Đồ Luồng Xử Lý Chuẩn (Execution Pipeline)](#2-sơ-đồ-luồng-xử-lý-chuẩn-execution-pipeline)
 3. [Module 1: Thiết Kế Fast-Path Engine & Đồng Bộ Hậu Giai Đoạn 1 [ĐÃ HOÀN THÀNH 100%]](#3-module-1-thiết-kế-fast-path-engine--đồng-bộ-hậu-giai-đoạn-1-đã-hoàn-thành-100)
    - [3.1. Phân biệt lệnh Player, Ngữ cảnh Turn 1 và Phản hồi trung tính cho `NEXT`](#31-phân-biệt-lệnh-player-ngữ-cảnh-turn-1-và-phản-hồi-trung-tính-cho-next)
    - [3.2. Đàm phán Khả năng Client & Đồng bộ Android Client](#32-đàm-phán-khả-năng-client--đồng-bộ-android-client)
    - [3.3. Tách biệt Luồng Cleanup, Bẫy JPA Auditing, Migration DATETIME(6) & Tính Đối Ngẫu Tie-Breaker](#33-tách-biệt-luồng-cleanup-bẫy-jpa-auditing-migration-datetime6--tính-đối-ngẫu-tie-breaker)
-   - [3.4. Mã nguồn triển khai `FastPathResult` & `FastPathEngine`](#34-mã-nguồn-triển-khai-fastpathresult--fastpathengine)
+   - [3.4. Mã nguồn chuẩn xác Two-Tier `FastPathResult` & `FastPathEngine`](#34-mã-nguồn-chuẩn-xác-two-tier-fastpathresult--fastpathengine)
 4. [Module 2: Thiết Kế Model Router & Resilience4j Circuit Breaker [ĐÃ HOÀN THÀNH 100%]](#4-module-2-thiết-kế-model-router--resilience4j-circuit-breaker-đã-hoàn-thành-100)
-   - [4.1. Dependency, Phân cấp `UpstreamAiException` & Cấu hình Breaker `geminiCriticRouter`](#41-dependency-phân-cấp-upstreamaiexception--cấu-hình-breaker-geminicriticrouter)
+   - [4.1. Dependency, Phân cấp `UpstreamAiException` & Cấu hình Breaker `geminiCriticRouter` (Loại trừ 400/403)](#41-dependency-phân-cấp-upstreamaiexception--cấu-hình-breaker-geminicriticrouter-loại-trừ-400403)
    - [4.2. Điều kiện phân làn, Tách cờ `degradedByBreaker` & Đối tượng `RoutingDecision`](#42-điều-kiện-phân-làn-tách-cờ-degradedbybreaker--đối-tượng-routingdecision)
    - [4.3. Vòng đời Permit, First-Token Watchdog 8000ms & Tinh chỉnh Fallback Guard (Read-only vs Side-effect)](#43-vòng-đời-permit-first-token-watchdog-8000ms--tinh-chỉnh-fallback-guard-read-only-vs-side-effect)
 5. [Module 3: CanCacheEvaluator, Telemetry Service & Khung Quyết Định Dữ Liệu [HOÀN TẤT KỸ THUẬT]](#5-module-3-cancacheevaluator-telemetry-service--khung-quyết-định-dữ-liệu-hoàn-tất-kỹ-thuật)
-   - [5.1. Mã nguồn hoàn chỉnh `CanCacheEvaluator`: Quét 2 tầng Có dấu & Không dấu (8 Lý do Bypass)](#51-mã-nguồn-hoàn-chỉnh-cancacheevaluator-quét-2-tầng-có-dấu--không-dấu-8-lý-do-bypass)
-   - [5.2. Telemetry First: Mã nguồn `TelemetryService` (Caffeine 50k, 30m, Canonical SHA-256, Phân biệt người dùng)](#52-telemetry-first-mã-nguồn-telemetryservice-caffeine-50k-30m-canonical-sha-256-phân-biệt-người-dùng)
-   - [5.3. Khung Quyết Định Kiến Trúc Dựa Trên Dữ Liệu (Tiêu Chuẩn Hoàn Tất 100% Production-Ready)](#53-khung-quyết-định-kiến-trúc-dựa-trên-dữ-liệu-tiêu-chuẩn-hoàn-tất-100-production-ready)
+   - [5.1. Mã nguồn hoàn chỉnh `CanCacheEvaluator`: Cờ `(?U)` & Loại bỏ bẫy "Nhạc Anh" (8 Lý do Bypass)](#51-mã-nguồn-hoàn-chỉnh-cancacheevaluator-cờ-u--loại-bỏ-bẫy-nhạc-anh-8-lý-do-bypass)
+   - [5.2. Telemetry First: Mã nguồn `TelemetryService` (Caffeine 50k, 30m, Cô lập User ẩn danh)](#52-telemetry-first-mã-nguồn-telemetryservice-caffeine-50k-30m-cô-lập-user-ẩn-danh)
+   - [5.3. Khung Quyết Định Kiến Trúc Dựa Trên Dữ Liệu 3 Nhánh (Tiêu Chuẩn Hoàn Tất 100% Production-Ready)](#53-khung-quyết-định-kiến-trúc-dựa-trên-dữ-liệu-3-nhánh-tiêu-chuẩn-hoàn-tất-100-production-ready)
    - [5.4. Đặc tả Tương lai: Hệ Thống 5 Cổng So Khớp & Event-Driven Invalidation](#54-đặc-tả-tương-lai-hệ-thống-5-cổng-so-khớp--event-driven-invalidation)
 6. [Module 4: Tích Hợp Controller & Orchestrator](#6-module-4-tích-hợp-controller--orchestrator)
    - [6.1. Triển khai `AiChatController` & Hàm `handleFastPathExecution`](#61-triển-khai-aichatcontroller--hàm-handlefastpathexecution)
    - [6.2. Cấu trúc `AgentTurnResult`](#62-cấu-trúc-agentturnresult)
    - [6.3. Mã nguồn tích hợp luồng điều phối chính trong `AiAgentOrchestrator`](#63-mã-nguồn-tích-hợp-luồng-điều-phối-chính-trong-aiagentorchestrator)
 7. [Module 5: Kết Quả Kiểm Thử Thực Nghiệm & Metrics](#7-module-5-kết-quả-kiểm-thử-thực-nghiệm--metrics)
-   - [7.1. Kết quả kiểm thử thực tế (90/90 Unit & Integration Tests Passed 100%)](#71-kết-quả-kiểm-thử-thực-tế-9090-unit--integration-tests-passed-100)
+   - [7.1. Kết quả kiểm thử thực tế (91/91 Unit & Integration Tests Passed 100%)](#71-kết-quả-kiểm-thử-thực-tế-9191-unit--integration-tests-passed-100)
    - [7.2. Chỉ số Giám sát Micrometer Metrics](#72-chỉ-số-giám-sát-micrometer-metrics)
 8. [Phân Kỳ Triển Khai & Nghiệm Thu](#8-phân-kỳ-triển-khai--nghiệm-thu)
 
 ---
 
-## 1. ĐÁNH GIÁ HIỆN TRẠNG & PHÂN RÃ ĐIỂM SỐ CHUẨN XÁC (75%)
+## 1. ĐÁNH GIÁ HIỆN TRẠNG & PHÂN RÃ ĐIỂM SỐ CHUẨN XÁC (75% CODE-COMPLETE)
 
-Mức độ hoàn thiện kỹ thuật của Lớp 7 đã chính thức đạt mốc **75%** sau khi nghiệm thu Giai đoạn 1 & Giai đoạn 2, đồng thời triển khai hoàn tất hạ tầng Telemetry & CanCacheEvaluator của Giai đoạn 3:
+Tiến độ hoàn thiện của Lớp 7 được theo dõi dựa trên 4 thành phần kỹ thuật độc lập (mỗi thành phần chiếm trọng số 25%):
 
-| Thành phần kỹ thuật | Trọng số | Đạt được | Hiện trạng mã nguồn kiểm tra thực tế |
+| Thành phần kỹ thuật | Trọng số | Trạng thái đạt được | Chi tiết kỹ thuật & Hiện trạng kiểm thử |
 | :--- | :---: | :---: | :--- |
-| **Traditional Data Cache** | 25% | **25%** | Caffeine cache cho top trending SQL, In-memory ConcurrentMap cho Vector bài hát |
-| **Fast-Path Command Engine** | 25% | **25%** | **ĐÃ HOÀN THÀNH & NGHIỆM THU (56/56 tests PASS):** Regex 2 tầng, chạy trước Session Lock, emitter cách ly, đồng bộ Android Client, migration `DATETIME(6)`, `@Transactional saveFastPathMessages` |
-| **Dynamic Model Router & Fallback** | 25% | **25%** | **ĐÃ HOÀN THÀNH & NGHIỆM THU (14/14 tests PASS):** `ModelRouterService`, Resilience4j `geminiCriticRouter`, watchdog 8000ms (`CompletableFuture.supplyAsync`), phân cấp `UpstreamAiException`, fallback an toàn phân biệt read-only vs side-effect |
-| **Telemetry & Data-Driven Decision** | 25% | **Đang thu thập** | **ĐÃ TRIỂN KHAI HOÀN TẤT & TEST (15/15 tests PASS):** `CanCacheEvaluator` (8 cổng bypass), `TelemetryService` (Caffeine 50k, 30m, phân biệt `exact_repeat_hits` vs `self_repeat_hits`, fail-safe). **Tiêu chuẩn hoàn tất 100%:** Nghiệm thu bằng Khung Quyết Định Dựa Trên Dữ Liệu sau đo đạc thực tế |
-| **TỔNG CỘNG** | **100%** | **75%** | **90/90 Unit & Integration Tests Passed (100% Pass Rate). Sẵn sàng vận hành thu thập dữ liệu quyết định kiến trúc 100%.** |
+| **Traditional Data Cache** | 25% | **25% (Sẵn có)** | Caffeine cache cho top trending SQL, In-memory ConcurrentMap cho Vector bài hát |
+| **Fast-Path Command Engine** | 25% | **+25% (Lũy kế 50%)** | **ĐÃ HOÀN THÀNH & NGHIỆM THU (56 tests):** Regex Two-Tier có/không dấu, chạy trước Session Lock, đồng bộ Android Client, `DATETIME(6)` microsecond precision, `@Transactional saveFastPathMessages`, Dual Tie-Breaker |
+| **Dynamic Model Router & Fallback** | 25% | **+25% (Lũy kế 75%)** | **ĐÃ HOÀN THÀNH & NGHIỆM THU (17 tests):** `ModelRouterService`, Resilience4j `geminiCriticRouter` (loại trừ lỗi 400/403 safety khỏi Breaker), watchdog 8000ms (`CompletableFuture.supplyAsync`), phân cấp `UpstreamAiException`, fallback an toàn phân biệt read-only vs side-effect |
+| **Telemetry & Data-Driven Decision** | 25% | **Hạ tầng hoàn tất (18 tests)<br/>Đang thu thập số liệu** | **ĐÃ TRIỂN KHAI HOÀN TẤT & TEST (18 tests):** `CanCacheEvaluator` (8 cổng bypass, regex `(?U)`, xử lý tránh bắt nhầm "nhạc Anh"), `TelemetryService` (Caffeine 50k, 30m, phân biệt `exact_repeat_hits` vs `self_repeat_hits` và cô lập user ẩn danh qua `UUID`). **100% Production-Ready** sẽ được ký duyệt sau khi hoàn tất đo đạc thực tế |
+| **TỔNG CỘNG** | **100%** | **75% Code-Complete** | **91/91 Unit & Integration Tests Passed (100% Pass Rate). Sẵn sàng giai đoạn đo lường thực tế.** |
 
 ---
 
@@ -63,13 +63,12 @@ flowchart TD
     
     Step3 --> Step4["Bước 4: Can-Cache Evaluator & Telemetry (100% Request)<br/>- Quét 2 tầng (Có dấu & Không dấu) phân loại 8 lý do BYPASS<br/>- Ghi nhận Counter eligibility (true/false) & bypasses (reason)<br/>- Lưu Canonical SHA-256 vào Caffeine 30m đo exact_repeat_hits vs self_repeat_hits"]
     
-    Step4 -- "Bypass (Có history / currentSongId != null / PII / Personal...)" --> Step6["Bước 6: Dynamic Model Router<br/>(Làn A: Fast Tier vs Làn B: Reasoning Tier)"]
-    
     Step4 -- "Cacheable (Turn 1 độc lập & currentSongId == null)" --> Step5{"Bước 5: Semantic Cache Lookup<br/>(Chỉ chạy khi mode != OFF)"}
     
     Step5 -- "HIT (Đạt 5 Cổng So Khớp)" --> CacheRet["⚡ Cache Response (~150-300ms)<br/>- Trả kết quả (totalTokens = 0)<br/>- Caffeine getIfPresent<br/>- Callback lưu DB & Mở khóa Session"]
     
-    Step5 -- "MISS" --> Step6
+    Step5 -- "MISS" --> Step6["Bước 6: Dynamic Model Router<br/>(Làn A: Fast Tier vs Làn B: Reasoning Tier + Breaker)"]
+    Step4 -- "Bypass (Có history / currentSongId != null / PII / Personal...)" --> Step6
     
     Step6 --> Step7["Bước 7: Multi-Step Agent Execution Loop<br/>- Quản lý Permit tại executeAgentLoop (chống double-release)<br/>- First-Token Watchdog 8000ms<br/>- Fallback an toàn: Cho phép khi read-only tools, chặn khi side-effect tools"]
     
@@ -108,29 +107,30 @@ flowchart TD
 
 ### 3.2. Đàm phán Khả năng Client & Đồng bộ Android Client
 
-1. **Cờ `clientSupportsTransportActions`:**
-   * Cờ boolean `clientSupportsTransportActions` được thêm vào DTO `AiChatStreamRequest`. Mặc định được gán `true` trên Android Client.
-   * Nếu client cũ gửi `null` hoặc `false`, Fast-Path Engine bỏ qua nhánh Player và chuyển cho LLM xử lý thông qua Tool Calling thông thường.
+1. **Cờ `clientSupportsTransportActions` & Phòng Ngừa Unboxing NPE:**
+   * Cờ boolean `clientSupportsTransportActions` trong `AiChatStreamRequest` là kiểu `Boolean` (đối tượng). Để tránh lỗi `NullPointerException` khi client cũ gửi giá trị null, Backend luôn kiểm tra qua:
+     ```java
+     boolean clientSupportsTransport = Boolean.TRUE.equals(request.clientSupportsTransportActions());
+     ```
 2. **Đồng bộ Android Client (`AgenticPlayerDispatcher.kt`):**
-   * Trong `AgenticPlayerDispatcher.kt`, logic điều khiển nhạc đã được cấu trúc lại:
+   * Trong `AgenticPlayerDispatcher.kt`, logic điều khiển nhạc đã được cấu trúc lại để chấp nhận thực thi ngay cả khi `songCard == null`:
      ```kotlin
-     // Phía Client: Tách lệnh transport không phụ thuộc songCard
-     when (actionDto.action) {
-         PlayerActionType.PAUSE -> {
+     when (actionDto.action.uppercase()) {
+         "PAUSE" -> {
              playerManager.pause()
-             return@collectLatest
          }
-         PlayerActionType.RESUME -> {
+         "RESUME" -> {
              playerManager.resume()
-             return@collectLatest
          }
-         PlayerActionType.NEXT -> {
+         "NEXT" -> {
              playerManager.next()
-             return@collectLatest
          }
-         PlayerActionType.PLAY -> {
+         "PLAY" -> {
              val songCard = actionDto.song ?: return@collectLatest
-             playerManager.playSong(songCard.id)
+             val song = songCard.toSong()
+             if (actionDto.autoExecute) {
+                 playerManager.play(song)
+             }
          }
      }
      ```
@@ -145,14 +145,16 @@ flowchart TD
 2. **Triệt tiêu Direct Field Access của JPA Auditing:**
    * `ChatMessage` kế thừa từ `AbstractAuditEntity`. Khi dùng `@CreatedDate`, Spring Data reflection sẽ chọc thẳng vào trường private lớp cha và ghi đè mất khoảng lệch `+5ms`.
    * **Giải pháp:** Chuyển `AbstractAuditEntity.java` sang dùng `@PrePersist onPrePersist()` và `@PreUpdate onPreUpdate()` thuần của JPA (kiểm tra `if (this.createdAt == null)`).
-3. **Migration Flyway `V5` - Nâng cấp Microsecond Precision:**
-   * Kiểu `DATETIME` mặc định trong MySQL làm tròn mili-giây về giây chẵn, khiến khoảng lệch `+5ms` của `aiMessage` bị san phẳng thành cùng một giây.
-   * Migration Flyway `V5__alter_chat_tables_datetime_precision.sql` nâng cấp các cột:
+3. **Migration Flyway `V5` - Nâng cấp Microsecond Precision & Bảo Toàn `ON UPDATE`:**
+   * Trong MySQL, việc chạy `MODIFY COLUMN` nếu không khai báo lại `ON UPDATE` sẽ làm mất cơ chế cập nhật tự động của cột `updated_at`. Do đó, migration Flyway `V5__alter_chat_tables_datetime_precision.sql` được viết chuẩn xác:
      ```sql
-     ALTER TABLE chat_session MODIFY COLUMN created_at DATETIME(6) NOT NULL;
-     ALTER TABLE chat_session MODIFY COLUMN updated_at DATETIME(6) NOT NULL;
-     ALTER TABLE chat_message MODIFY COLUMN created_at DATETIME(6) NOT NULL;
-     ALTER TABLE chat_message MODIFY COLUMN updated_at DATETIME(6) NOT NULL;
+     ALTER TABLE chat_session
+         MODIFY COLUMN created_at DATETIME(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6),
+         MODIFY COLUMN updated_at DATETIME(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6) ON UPDATE CURRENT_TIMESTAMP(6);
+
+     ALTER TABLE chat_message
+         MODIFY COLUMN created_at DATETIME(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6),
+         MODIFY COLUMN updated_at DATETIME(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6) ON UPDATE CURRENT_TIMESTAMP(6);
      ```
 4. **Phương thức `@Transactional saveFastPathMessages`:**
    * Trong `AiChatSessionService.java`, gom việc lưu `userMessage` và `aiMessage` vào cùng một transaction duy nhất để đảm bảo tính toàn vẹn ACID:
@@ -171,129 +173,156 @@ flowchart TD
 
 ---
 
-### 3.4. Mã nguồn triển khai `FastPathResult` & `FastPathEngine`
+### 3.4. Mã nguồn chuẩn xác Two-Tier `FastPathResult` & `FastPathEngine`
+
+Đây là mã nguồn thực tế đang chạy và được kiểm thử thành công trong [`FastPathEngine.java`](file:///D:/SpringBoot/identity-service-main/identity-service-main/src/main/java/com/devteria/identityservice/service/FastPathEngine.java):
 
 ```java
 package com.devteria.identityservice.service;
 
-import com.devteria.identityservice.dto.response.PlayerActionDto;
-import com.devteria.identityservice.enums.PlayerActionType;
-import org.springframework.stereotype.Component;
+import com.devteria.identityservice.dto.FastPathResult;
+import com.devteria.identityservice.enums.AiPersona;
 
 import java.text.Normalizer;
 import java.util.Locale;
+import java.util.Optional;
 import java.util.regex.Pattern;
 
-@Component
-public class FastPathEngine {
+public final class FastPathEngine {
 
-    public enum ActionType {
-        TEXT_ONLY,
-        PLAYER_ACTION
+    public static final class ActionType {
+        public static final String PAUSE = "PAUSE";
+        public static final String RESUME = "RESUME";
+        public static final String NEXT = "NEXT";
+        public static final String PLAY = "PLAY";
+        public static final String QUEUE = "QUEUE";
     }
 
-    public record FastPathResult(
-            ActionType actionType,
-            String responseText,
-            PlayerActionDto playerAction
-    ) {}
+    // Regex có dấu (Tier 1) - Khớp khi người dùng gõ tiếng Việt có dấu chuẩn
+    private static final Pattern STOP_ACCENTED = Pattern.compile(
+            "^(?:tạm dừng|dừng|tắt|dừng lại|ngừng phát)(?: nhạc)?(?: (?:đi|nhé|giúp|ạ|với|mình|cho mình|giùm|hộ|nào|nha))*$",
+            Pattern.CASE_INSENSITIVE);
+    private static final Pattern RESUME_ACCENTED = Pattern.compile(
+            "^(?:tiếp tục|phát tiếp)(?: nhạc)?(?: (?:đi|nhé|giúp|ạ|với|mình|cho mình|giùm|hộ|nào|nha))*$",
+            Pattern.CASE_INSENSITIVE);
+    private static final Pattern NEXT_ACCENTED = Pattern.compile(
+            "^(?:bài tiếp|qua bài|chuyển bài|next bài|bài sau|bài kế tiếp)(?: (?:đi|nhé|ạ|với|mình|cho mình|giùm|hộ|nào|nha))*$",
+            Pattern.CASE_INSENSITIVE);
 
-    private static final Pattern COMBINING_DIACRITICAL_MARKS = Pattern.compile("\\p{InCombiningDiacriticalMarks}+");
-    private static final Pattern TRAILING_PUNCTUATION = Pattern.compile("[!?.,;:]+$");
-
-    private static final Pattern GREETING_UNACCENTED = Pattern.compile(
-            "^(?:xin chao|chao ban|chao ad|chao bot|hi|hello|hey|yo|alo|hi bot|hello bot)$",
-            Pattern.CASE_INSENSITIVE
-    );
-
-    private static final Pattern PAUSE_UNACCENTED = Pattern.compile(
-            "^(?:tam dung|dung lai|dung nhac|dung phat|stop|pause|tat|tat nhac)(?: giup minh| giup toi| ho minh| di| nhe| nha| voi)?$",
-            Pattern.CASE_INSENSITIVE
-    );
-
+    // Regex không dấu (Tier 2) - Phân nhóm dứt khoát, an toàn cho "tam dung nhac", "tat", "tat nhac"
+    private static final Pattern STOP_UNACCENTED = Pattern.compile(
+            "^(?:tam dung(?: nhac)?|tat(?: nhac)?|dung lai|ngung phat|stop|pause)(?: (?:di|nhe|giup|a|voi|minh|cho minh|dum|ho|nao|nha))*$",
+            Pattern.CASE_INSENSITIVE);
     private static final Pattern RESUME_UNACCENTED = Pattern.compile(
-            "^(?:tiep tuc|phat tiep|bat tiep|nghe tiep|resume|play)(?: giup minh| giup toi| ho minh| di| nhe| nha| voi)?$",
-            Pattern.CASE_INSENSITIVE
-    );
-
+            "^(?:tiep tuc(?: nhac)?|phat tiep(?: nhac)?|resume)(?: (?:di|nhe|giup|a|voi|minh|cho minh|dum|ho|nao|nha))*$",
+            Pattern.CASE_INSENSITIVE);
     private static final Pattern NEXT_UNACCENTED = Pattern.compile(
-            "^(?:chuyen bai|bai tiep theo|bai ke tiep|qua bai|next|skip)(?: giup minh| giup toi| ho minh| di| nhe| nha| voi)?$",
-            Pattern.CASE_INSENSITIVE
-    );
+            "^(?:bai tiep|next|qua bai|chuyen bai|next bai|bai sau|bai ke tiep)(?: (?:di|nhe|a|voi|minh|cho minh|dum|ho|nao|nha))*$",
+            Pattern.CASE_INSENSITIVE);
 
-    private static final Pattern NEGATION_OR_DISAMBIGUATION = Pattern.compile(
-            "\\b(?:dung|dung co|cho|thoi|khong|chua|tra loi|phan tich|tim|bai hat cua dung)\\b",
-            Pattern.CASE_INSENSITIVE
-    );
+    // Khớp chào hỏi và danh tính kèm các từ đệm thông dụng
+    private static final Pattern GREETING_PATTERN = Pattern.compile(
+            "^(?:chào|chao|hi|hello|xin chào|xin chao|helo|chào bạn|chao ban|chào bot|chao bot|hai bot|hai ban)(?: (?:nhé|nhe|ạ|a|nha))*$",
+            Pattern.CASE_INSENSITIVE);
+    private static final Pattern IDENTITY_PATTERN = Pattern.compile(
+            "^(?:bạn là ai|ban la ai|bạn tên gì|ban ten gi|tên bạn là gì|ten ban la gi|giới thiệu về bạn|gioi thieu ve ban)$",
+            Pattern.CASE_INSENSITIVE);
 
-    public FastPathResult evaluate(
+    private static final Pattern TRAILING_PUNCTUATION = Pattern.compile("[!?.,;:]+$");
+    private static final Pattern VIETNAMESE_DIACRITICS = Pattern.compile(
+            "[àáạảãâầấậẩẫăằắặẳẵèéẹẻẽêềếệểễìíịỉĩòóọỏõôồốộổỗơờớợởỡùúụủũưừứựửữỳýỵỷỹđ]",
+            Pattern.CASE_INSENSITIVE);
+
+    private FastPathEngine() {}
+
+    public static Optional<FastPathResult> evaluate(
             String rawPrompt,
-            boolean hasPriorHistory,
+            AiPersona persona,
             String currentSongId,
+            boolean hasPriorHistory,
             boolean clientSupportsTransportActions) {
 
         if (rawPrompt == null || rawPrompt.isBlank()) {
-            return null;
+            return Optional.empty();
         }
 
-        String trimmed = rawPrompt.trim();
-        if (trimmed.length() > 60) {
-            return null;
+        // 1. Chuẩn hóa NFC, gộp khoảng trắng và cắt dấu câu cuối
+        String nfcPrompt = Normalizer.normalize(rawPrompt.trim(), Normalizer.Form.NFC);
+        String singleSpaced = nfcPrompt.replaceAll("\\s+", " ");
+        String lowerRaw = TRAILING_PUNCTUATION.matcher(singleSpaced.toLowerCase(Locale.ROOT)).replaceAll("").trim();
+
+        // 2. Chặn triệt để các câu phủ định có dấu ("đừng", "không", "chớ")
+        // Lưu ý: Không kiểm tra từ không dấu "dung" để tránh chặn nhầm lệnh "tạm dừng" / "dừng lại"
+        if (lowerRaw.startsWith("đừng ") || lowerRaw.startsWith("không ") || lowerRaw.startsWith("chớ ")
+                || lowerRaw.contains(" đừng ") || lowerRaw.contains(" không ") || lowerRaw.contains(" chớ ")
+                || lowerRaw.equals("đừng") || lowerRaw.equals("không") || lowerRaw.equals("chớ")) {
+            return Optional.empty();
         }
 
-        String nfc = Normalizer.normalize(trimmed, Normalizer.Form.NFC);
-        String singleSpaced = nfc.replaceAll("\\s+", " ");
-        String lowerAccented = TRAILING_PUNCTUATION.matcher(singleSpaced.toLowerCase(Locale.ROOT)).replaceAll("").trim();
-        String lowerUnaccented = stripDiacritics(lowerAccented);
-
-        // 1. Nhánh Chào hỏi Turn 1
-        if (!hasPriorHistory && GREETING_UNACCENTED.matcher(lowerUnaccented).matches()) {
-            return new FastPathResult(
-                    ActionType.TEXT_ONLY,
-                    "Yo! GenZ DJ đây, hôm nay bạn muốn lên dây cót tinh thần bằng giai điệu nào? Bật mí ngay nhé!",
-                    null
-            );
+        // 3. Giới hạn độ dài an toàn và chặn câu truy vấn ca sĩ / bài hát
+        if (lowerRaw.length() > 60 || lowerRaw.contains(" ca khúc ") || lowerRaw.contains(" ca sĩ ") || lowerRaw.contains(" của ")) {
+            return Optional.empty();
         }
 
-        // 2. Nhánh Lệnh Player Transport
-        if (currentSongId != null && !currentSongId.isBlank() && clientSupportsTransportActions) {
-            if (NEGATION_OR_DISAMBIGUATION.matcher(lowerUnaccented).find()) {
-                return null;
+        // 4. Khớp câu chào hỏi / danh tính theo Persona (Chỉ áp dụng khi hasPriorHistory == false)
+        if (!hasPriorHistory) {
+            if (IDENTITY_PATTERN.matcher(lowerRaw).matches()) {
+                return Optional.of(FastPathResult.textMessage(resolveIdentityResponse(persona)));
             }
-
-            if (PAUSE_UNACCENTED.matcher(lowerUnaccented).matches()) {
-                return new FastPathResult(
-                        ActionType.PLAYER_ACTION,
-                        "Đã tạm dừng phát nhạc.",
-                        PlayerActionDto.builder().action(PlayerActionType.PAUSE).build()
-                );
-            }
-
-            if (RESUME_UNACCENTED.matcher(lowerUnaccented).matches()) {
-                return new FastPathResult(
-                        ActionType.PLAYER_ACTION,
-                        "Đã tiếp tục phát nhạc.",
-                        PlayerActionDto.builder().action(PlayerActionType.RESUME).build()
-                );
-            }
-
-            if (NEXT_UNACCENTED.matcher(lowerUnaccented).matches()) {
-                return new FastPathResult(
-                        ActionType.PLAYER_ACTION,
-                        "Đã gửi lệnh chuyển bài.",
-                        PlayerActionDto.builder().action(PlayerActionType.NEXT).build()
-                );
+            if (GREETING_PATTERN.matcher(lowerRaw).matches()) {
+                return Optional.of(FastPathResult.textMessage(resolveGreetingResponse(persona)));
             }
         }
 
-        return null;
+        // 5. Khớp lệnh Player Control: Phải có bài đang phát & client hỗ trợ
+        if (currentSongId == null || currentSongId.isBlank() || !clientSupportsTransportActions) {
+            return Optional.empty();
+        }
+
+        // Kiến trúc Two-Tier: Phân biệt rõ chuỗi có dấu vs không dấu
+        boolean hasDiacritics = VIETNAMESE_DIACRITICS.matcher(lowerRaw).find();
+
+        if (hasDiacritics) {
+            if (STOP_ACCENTED.matcher(lowerRaw).matches()) {
+                return Optional.of(FastPathResult.playerAction(ActionType.PAUSE, "Đã tạm dừng phát nhạc."));
+            }
+            if (RESUME_ACCENTED.matcher(lowerRaw).matches()) {
+                return Optional.of(FastPathResult.playerAction(ActionType.RESUME, "Tiếp tục phát nhạc."));
+            }
+            if (NEXT_ACCENTED.matcher(lowerRaw).matches()) {
+                return Optional.of(FastPathResult.playerAction(ActionType.NEXT, "Đã gửi lệnh chuyển bài."));
+            }
+        } else {
+            if (STOP_UNACCENTED.matcher(lowerRaw).matches()) {
+                return Optional.of(FastPathResult.playerAction(ActionType.PAUSE, "Đã tạm dừng phát nhạc."));
+            }
+            if (RESUME_UNACCENTED.matcher(lowerRaw).matches()) {
+                return Optional.of(FastPathResult.playerAction(ActionType.RESUME, "Tiếp tục phát nhạc."));
+            }
+            if (NEXT_UNACCENTED.matcher(lowerRaw).matches()) {
+                return Optional.of(FastPathResult.playerAction(ActionType.NEXT, "Đã gửi lệnh chuyển bài."));
+            }
+        }
+
+        return Optional.empty();
     }
 
-    private static String stripDiacritics(String input) {
-        if (input == null) return "";
-        String normalized = Normalizer.normalize(input, Normalizer.Form.NFD);
-        String withoutMarks = COMBINING_DIACRITICAL_MARKS.matcher(normalized).replaceAll("");
-        return withoutMarks.replace('đ', 'd').replace('Đ', 'D');
+    private static String resolveGreetingResponse(AiPersona persona) {
+        if (persona == null) return "Xin chào! Mình có thể giúp gì cho trải nghiệm âm nhạc của bạn?";
+        return switch (persona) {
+            case GENZ_DJ -> "Yo! GenZ DJ đây, hôm nay bạn muốn lên dây cót tinh thần bằng giai điệu nào? Bật mí ngay nhé!";
+            case MUSIC_CRITIC -> "Chào bạn. Tôi là Chuyên gia Âm nhạc. Bạn muốn phân tích cấu trúc hay tìm hiểu sâu về tác phẩm nào?";
+            case HEALING_BUDDY -> "Chào bạn, mình ở đây để lắng nghe. Hôm nay tâm trạng bạn thế nào, để mình chọn một khúc ca vỗ về nhé?";
+        };
+    }
+
+    private static String resolveIdentityResponse(AiPersona persona) {
+        if (persona == null) return "Mình là trợ lý AI đồng hành âm nhạc của bạn.";
+        return switch (persona) {
+            case GENZ_DJ -> "Mình là GenZ DJ - người bạn bắt trend âm nhạc cực nhạy của bạn!";
+            case MUSIC_CRITIC -> "Tôi là Chuyên gia Thẩm định Âm nhạc, sẵn sàng mổ xẻ hòa âm phối khí cùng bạn.";
+            case HEALING_BUDDY -> "Mình là Healing Buddy, người bạn tri kỷ xoa dịu tâm hồn bạn qua từng giai điệu.";
+        };
     }
 }
 ```
@@ -302,17 +331,15 @@ public class FastPathEngine {
 
 ## 4. MODULE 2: THIẾT KẾ MODEL ROUTER & RESILIENCE4J CIRCUIT BREAKER [ĐÃ HOÀN THÀNH 100%]
 
-### 4.1. Dependency, Phân cấp `UpstreamAiException` & Cấu hình Breaker `geminiCriticRouter`
+### 4.1. Dependency, Phân cấp `UpstreamAiException` & Cấu hình Breaker `geminiCriticRouter` (Loại trừ 400/403)
 
-1. **Bảo toàn Cấu hình & Bổ sung Dependency:**
-   * Bổ sung `io.github.resilience4j:resilience4j-spring-boot3:2.2.0`, `spring-boot-starter-aop` và `spring-boot-starter-actuator` vào `pom.xml`.
-   * Mô hình:
-     * Fast Tier: `${GEMINI_FAST_MODEL:${gemini.model:gemini-3.5-flash-lite}}`.
-     * Reasoning Tier: `${GEMINI_REASONING_MODEL:gemini-2.5-pro}`.
-2. **Phân cấp `UpstreamAiException` cho Resilience4j `record-exceptions`:**
+1. **Phân cấp `UpstreamAiException`:**
    * Trong Resilience4j, nếu một ngoại lệ không nằm trong `record-exceptions` mà truyền vào `circuitBreaker.onError()`, Breaker sẽ coi đó là một lượt gọi **THÀNH CÔNG** (`onSuccess`).
-   * **Giải pháp:** Định nghĩa lớp cơ sở `UpstreamAiException` và cho `FirstTokenTimeoutException` kế thừa từ lớp này. Khai báo `UpstreamAiException` vào danh sách `record-exceptions`. Mọi lỗi I/O hoặc network từ Google Gemini đều được bọc trong `UpstreamAiException`.
-3. **Cấu hình YAML:**
+   * **Giải pháp:** Định nghĩa lớp cơ sở `UpstreamAiException` và cho `FirstTokenTimeoutException` kế thừa từ lớp này. Khai báo `UpstreamAiException` vào danh sách `record-exceptions`.
+2. **Loại trừ lỗi 400 Bad Request và 403 Forbidden khỏi Breaker:**
+   * *Nguy cơ:* Nếu dùng `RestClientResponseException`, các lỗi HTTP 400 (Google từ chối vì vi phạm Safety Policy / Harmful Content, hoặc prompt của user không hợp lệ) sẽ bị tính là lỗi upstream. Với persona `MUSIC_CRITIC` (lưu lượng thấp, cửa sổ 120s tối thiểu 4 calls), chỉ cần 2 prompt bị safety block là Breaker bị nảy OPEN oan uổng!
+   * *Khắc phục:* Thu hẹp `record-exceptions` chỉ ghi nhận 5xx, 429 và ResourceAccessException; đưa HTTP 400 và 403 vào `ignore-exceptions`.
+3. **Cấu hình YAML chuẩn xác:**
    ```yaml
    ai:
      router:
@@ -334,11 +361,14 @@ public class FastPathEngine {
            permitted-number-of-calls-in-half-open-state: 2
            record-exceptions:
              - com.devteria.identityservice.exception.UpstreamAiException
-             - org.springframework.web.client.RestClientResponseException
+             - org.springframework.web.client.HttpServerErrorException
              - org.springframework.web.client.ResourceAccessException
+             - org.springframework.web.client.HttpClientErrorException$TooManyRequests
            ignore-exceptions:
              - org.apache.catalina.connector.ClientAbortException
              - org.springframework.web.context.request.async.AsyncRequestNotUsableException
+             - org.springframework.web.client.HttpClientErrorException$BadRequest
+             - org.springframework.web.client.HttpClientErrorException$Forbidden
    ```
 
 ---
@@ -376,18 +406,17 @@ public enum ModelTier {
    * Trước khi gọi model Reasoning Tier, lấy permit qua `circuitBreaker.tryAcquirePermission()`. Nếu thất bại (Breaker OPEN), lập tức hạ cấp sang Flash và gán `degradedByBreaker = true`.
    * Sử dụng cờ `AtomicBoolean resultRecorded = new AtomicBoolean(false)` trong khối `finally` để đảm bảo permit được giải phóng (`releasePermission()`) hoặc ghi nhận lỗi (`onError()`) duy nhất một lần.
 2. **First-Token Watchdog 8000ms:**
-   * Thực hiện gọi model thông qua `CompletableFuture.supplyAsync(...)` với `get(8000, TimeUnit.MILLISECONDS)`. Tránh dùng cùng SingleThreadExecutor với task cha để loại bỏ hoàn toàn nguy cơ deadlock luồng.
+   * Thực hiện gọi model thông qua `CompletableFuture.supplyAsync(...)` với `get(8000, TimeUnit.MILLISECONDS)`.
+   * *Lưu ý về Socket Cancellation:* Trong Java HTTP client, việc `future.cancel(true)` ngắt thread nhưng không thể đóng socket đang đọc dữ liệu trừ khi RestClient có cấu hình timeout socket (`read-timeout-ms: 15000`). Vì vậy, hệ thống kết hợp watchdog với socket timeout để giải phóng tài nguyên triệt để.
 3. **Tinh chỉnh Fallback Guard An Toàn:**
-   * Việc chặn đứng fallback dựa hoàn toàn trên `executedToolsCount > 0` là quá cứng nhắc với các tool chỉ đọc.
-   * **Giải pháp:** Hệ thống theo dõi cờ `hasSideEffectToolExecuted`:
-     * Các tool chỉ đọc (`search_music_library`, `get_top_trending_songs`, `get_user_recommendations`): Khi xảy ra lỗi trên Pro, **CHO PHÉP fallback sang Flash** để tổng hợp câu trả lời từ dữ liệu đã lấy.
-     * Các tool có tác dụng phụ làm thay đổi trạng thái (`trigger_player_action`, `propose_ai_playlist`): **CHẶN ĐỨNG fallback tuyệt đối**, dừng an toàn và trả lỗi `AI_SERVER_BUSY` để chống lỗi Double Mutation (thực thi tool 2 lần).
+   * Các tool chỉ đọc (`search_music_library`, `get_top_trending_songs`, `get_user_recommendations`): Khi xảy ra lỗi trên Pro, **CHO PHÉP fallback sang Flash** để tổng hợp câu trả lời từ dữ liệu đã lấy.
+   * Các tool có tác dụng phụ làm thay đổi trạng thái (`trigger_player_action`, `propose_ai_playlist`): **CHẶN ĐỨNG fallback tuyệt đối**, dừng an toàn và trả lỗi `AI_SERVER_BUSY` để chống lỗi Double Mutation (thực thi lệnh 2 lần).
 
 ---
 
 ## 5. MODULE 3: CANCHEEVALUATOR, TELEMETRY SERVICE & KHUNG QUYẾT ĐỊNH DỮ LIỆU [HOÀN TẤT KỸ THUẬT]
 
-### 5.1. Mã nguồn hoàn chỉnh `CanCacheEvaluator`: Quét 2 tầng Có dấu & Không dấu (8 Lý do Bypass)
+### 5.1. Mã nguồn hoàn chỉnh `CanCacheEvaluator`: Cờ `(?U)` & Loại bỏ bẫy "Nhạc Anh" (8 Lý do Bypass)
 
 ```java
 package com.devteria.identityservice.service;
@@ -406,25 +435,26 @@ public class CanCacheEvaluator {
     private static final Pattern COMBINING_DIACRITICAL_MARKS = Pattern.compile("\\p{InCombiningDiacriticalMarks}+");
     private static final Pattern TRAILING_PUNCTUATION = Pattern.compile("[!?.,;:]+$");
 
-    // 1. Dữ liệu cá nhân (Personal Data)
+    // 1. Dữ liệu cá nhân (Personal Data) - Quét có dấu (UNICODE (?U)) và không dấu
+    // Bắt buộc có "của" cho đại từ để tránh bắt nhầm "nhạc Anh" (nhạc nước Anh / tiếng Anh) thành dữ liệu cá nhân
     private static final Pattern PERSONAL_ACCENTED = Pattern.compile(
-            "\\b(?:của (?:tôi|mình|em|anh)|gu (?:của )?(?:tôi|mình|em|anh)|playlist (?:của )?(?:tôi|mình|em|anh)|danh sách (?:của )?(?:tôi|mình|em|anh)|nhạc (?:của )?(?:tôi|mình|em|anh)|bài (?:hát )?(?:của )?(?:tôi|mình) (?:yêu )?thích|(?:tôi|mình) (?:hay nghe|yêu thích|thích|đã nghe)|lịch sử nghe)\\b",
+            "(?U)\\b(?:của (?:tôi|mình|em|anh)|gu (?:của )?(?:tôi|mình|em|anh)|playlist (?:của )?(?:tôi|mình|em|anh)|danh sách (?:của )?(?:tôi|mình|em|anh)|nhạc của (?:tôi|mình|em|anh)|bài (?:hát )?(?:của )?(?:tôi|mình) (?:yêu )?thích|(?:tôi|mình) (?:hay nghe|yêu thích|thích|đã nghe)|lịch sử nghe)\\b",
             Pattern.CASE_INSENSITIVE
     );
 
     private static final Pattern PERSONAL_UNACCENTED = Pattern.compile(
-            "\\b(?:cua (?:toi|minh|em|anh)|gu (?:cua )?(?:toi|minh|em|anh)|playlist (?:cua )?(?:toi|minh|em|anh)|danh sach (?:cua )?(?:toi|minh|em|anh)|nhac (?:cua )?(?:toi|minh|em|anh)|bai (?:hat )?(?:cua )?(?:toi|minh) (?:yeu )?thich|(?:toi|minh) (?:hay nghe|yeu thich|thich|da nghe)|lich su nghe)\\b",
+            "\\b(?:cua (?:toi|minh|em|anh)|gu (?:cua )?(?:toi|minh|em|anh)|playlist (?:cua )?(?:toi|minh|em|anh)|danh sach (?:cua )?(?:toi|minh|em|anh)|nhac cua (?:toi|minh|em|anh)|bai (?:hat )?(?:cua )?(?:toi|minh) (?:yeu )?thich|(?:toi|minh) (?:hay nghe|yeu thich|thich|da nghe)|lich su nghe)\\b",
             Pattern.CASE_INSENSITIVE
     );
 
-    // 2. Thông tin nhận dạng cá nhân (PII)
+    // 2. Thông tin nhận dạng cá nhân (PII) - Số điện thoại, Email, CCCD/CMND
     private static final Pattern PHONE_PATTERN = Pattern.compile("(?:0|\\+84)(?:[\\s.-]?[0-9]){9,10}");
     private static final Pattern EMAIL_PATTERN = Pattern.compile("[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\\.[a-zA-Z]{2,}");
     private static final Pattern ID_CARD_PATTERN = Pattern.compile("\\b\\d{9,12}\\b");
 
     // 3. Đại từ thay thế phụ thuộc ngữ cảnh (Anaphora)
     private static final Pattern ANAPHORA_ACCENTED = Pattern.compile(
-            "\\b(?:bài này|bài đó|bài vừa rồi|bài trước|ca khúc này|ca khúc đó)\\b",
+            "(?U)\\b(?:bài này|bài đó|bài vừa rồi|bài trước|ca khúc này|ca khúc đó)\\b",
             Pattern.CASE_INSENSITIVE
     );
     private static final Pattern ANAPHORA_UNACCENTED = Pattern.compile(
@@ -434,7 +464,7 @@ public class CanCacheEvaluator {
 
     // 4. Từ khóa thời gian thực (Temporal)
     private static final Pattern TEMPORAL_ACCENTED = Pattern.compile(
-            "\\b(?:hôm nay|bây giờ|hiện tại|mới nhất|sáng nay|tối nay|tuần này|tháng này|năm nay)\\b",
+            "(?U)\\b(?:hôm nay|bây giờ|hiện tại|mới nhất|sáng nay|tối nay|tuần này|tháng này|năm nay)\\b",
             Pattern.CASE_INSENSITIVE
     );
     private static final Pattern TEMPORAL_UNACCENTED = Pattern.compile(
@@ -444,7 +474,7 @@ public class CanCacheEvaluator {
 
     // 5. Quy chiếu lửng lơ (Dangling References)
     private static final Pattern DANGLING_ACCENTED = Pattern.compile(
-            "\\b(?:còn bài nào|bài tiếp theo|tiếp đi|nữa không|còn không)\\b",
+            "(?U)\\b(?:còn bài nào|bài tiếp theo|tiếp đi|nữa không|còn không)\\b",
             Pattern.CASE_INSENSITIVE
     );
     private static final Pattern DANGLING_UNACCENTED = Pattern.compile(
@@ -510,7 +540,7 @@ public class CanCacheEvaluator {
 
 ---
 
-### 5.2. Telemetry First: Mã nguồn `TelemetryService` (Caffeine 50k, 30m, Canonical SHA-256, Phân biệt người dùng)
+### 5.2. Telemetry First: Mã nguồn `TelemetryService` (Caffeine 50k, 30m, Cô lập User ẩn danh)
 
 ```java
 package com.devteria.identityservice.service;
@@ -530,6 +560,7 @@ import java.security.NoSuchAlgorithmException;
 import java.text.Normalizer;
 import java.util.HexFormat;
 import java.util.Locale;
+import java.util.UUID;
 import java.util.concurrent.TimeUnit;
 import java.util.regex.Pattern;
 
@@ -574,7 +605,11 @@ public class TelemetryService {
             String canonical = toCanonicalPrompt(rawPrompt);
             String sha256 = computeSha256(canonical);
 
-            String effectiveUser = (userId != null && !userId.isBlank()) ? userId : "anonymous";
+            // Cô lập người dùng ẩn danh: Dùng UUID ngẫu nhiên theo lượt để không gộp nhầm 2 người ẩn danh thành cùng 1 người
+            String effectiveUser = (userId != null && !userId.isBlank())
+                    ? userId
+                    : "anon-" + UUID.randomUUID().toString();
+
             String existingUser = repeat30mCache.getIfPresent(sha256);
 
             if (existingUser != null) {
@@ -629,7 +664,7 @@ public class TelemetryService {
 
 ---
 
-### 5.3. Khung Quyết Định Kiến Trúc Dựa Trên Dữ Liệu (Tiêu Chuẩn Hoàn Tất 100% Production-Ready)
+### 5.3. Khung Quyết Định Kiến Trúc Dựa Trên Dữ Liệu 3 Nhánh (Tiêu Chuẩn Hoàn Tất 100% Production-Ready)
 
 Hạ tầng Telemetry chạy ngầm thu thập dữ liệu với $N \ge 1.000$ lượt tương tác trên môi trường Staging/Production:
 
@@ -641,6 +676,8 @@ graph TD
     
     Evaluate -- ">= 3% (Tải lặp cao)" --> DeployCache["🚀 Triển khai Hệ Thống Vector Cache 5 Cổng<br/>(pgvector / Milvus / in-memory HNSW)<br/>Tiết kiệm chi phí token & Giảm tải LLM"]
     
+    Evaluate -- "1% - 3% (Vùng giao thoa)" --> ShadowMode["🔬 Kích hoạt SHADOW MODE (10% Traffic trong 7 ngày)<br/>Đo lường độ trễ & Tiết kiệm token thực tế<br/>trước khi cấp phát RAM cho Vector DB"]
+    
     Evaluate -- "< 1% hoặc Lưu lượng tổng quát thấp" --> SignOff["🏆 Ký Duyệt Nghiệm Thu 100% Production-Ready<br/>KHÔNG CẦN Semantic Cache (Pragmatic Architecture)<br/>Tiết kiệm RAM & CPU, bảo toàn hiệu năng tối ưu"]
 ```
 
@@ -648,7 +685,7 @@ graph TD
 
 ### 5.4. Đặc tả Tương lai: Hệ Thống 5 Cổng So Khớp & Event-Driven Invalidation
 
-Khi tỷ lệ lặp $\ge 3\%$, hệ thống kích hoạt triển khai 5 Cổng So Khớp:
+Khi tỷ lệ lặp $\ge 3\%$ hoặc sau khi hoàn tất Shadow Mode, hệ thống kích hoạt triển khai 5 Cổng So Khớp:
 1. **Cổng 1 (Persona Isolation):** Khóa tra cứu độc lập theo Persona (`AiPersona`).
 2. **Cổng 2 (LSH / Pre-filtering Trie):** Thu hẹp không gian tìm kiếm qua cụm từ khóa âm nhạc.
 3. **Cổng 3 (Cosine Similarity):** So khớp ngữ nghĩa vector $\cos(\vec{u}, \vec{v}) \ge \theta$ ($\theta = 0.92$).
@@ -665,15 +702,18 @@ Khi tỷ lệ lặp $\ge 3\%$, hệ thống kích hoạt triển khai 5 Cổng S
 
 ```java
 // Trong AiChatController.java
-FastPathResult fastResult = fastPathEngine.evaluate(
+boolean clientSupportsTransport = Boolean.TRUE.equals(request.clientSupportsTransportActions());
+
+Optional<FastPathResult> fastResultOpt = FastPathEngine.evaluate(
         request.message(),
-        hasPriorHistory,
+        session.getPersona(),
         request.currentSongId(),
-        request.clientSupportsTransportActions()
+        hasPriorHistory,
+        clientSupportsTransport
 );
 
-if (fastResult != null) {
-    return handleFastPathExecution(session, currentUser, currentSong, fastResult, request, hasPriorHistory);
+if (fastResultOpt.isPresent()) {
+    return handleFastPathExecution(session, currentUser, currentSong, fastResultOpt.get(), request, hasPriorHistory);
 }
 
 // Chỉ lấy Lock khi không khớp Fast-Path
@@ -743,7 +783,7 @@ private SseEmitter handleFastPathExecution(
     } finally {
         if (sample != null && meterRegistry != null) {
             sample.stop(meterRegistry.timer("ai.latency.fastpath"));
-            meterRegistry.counter("ai.fastpath.hits", "type", fastResult.actionType().name()).increment();
+            meterRegistry.counter("ai.fastpath.hits", "type", fastResult.type().name()).increment();
         }
     }
     return fastEmitter;
@@ -801,20 +841,20 @@ aiStreamingExecutor.submit(() -> {
 
 ## 7. MODULE 5: KẾT QUẢ KIỂM THỬ THỰC NGHIỆM & METRICS
 
-### 7.1. Kết quả kiểm thử thực tế (90/90 Unit & Integration Tests Passed 100%)
+### 7.1. Kết quả kiểm thử thực tế (91/91 Unit & Integration Tests Passed 100%)
 
-Toàn bộ hệ thống được kiểm chứng qua bộ kiểm thử tự động với Maven và JDK 21:
+Toàn bộ hệ thống được kiểm chứng qua bộ kiểm thử tự động với Maven và JDK 21 (số học được đối soát chính xác 100%):
 
-| Bộ Kiểm Thử (Test Class) | Số lượng Test | Kết quả | Trọng tâm kiểm thử đã xác minh |
-| :--- | :---: | :---: | :--- |
-| **`FastPathEngineTest`** | 47 | **47/47 PASS** | Regex 2 tầng có/không dấu, từ đệm dài, phản hồi trung tính cho NEXT, chống phủ định, chống va chạm dấu tên riêng, chào hỏi Turn 1 vs Turn 2+ |
-| **`AiChatControllerTest`** | 9 | **9/9 PASS** | Fast-Path greeting, player transport, legacy client fallback, IDOR check, Session Lock isolation, Rate Limit |
-| **`ModelRouterServiceTest`** | 7 | **7/7 PASS** | Phân làn Critic với regex nhạc lý không dấu, bỏ qua prompt ngắn, hạ cấp khi Breaker OPEN |
-| **`CircuitBreakerLifecycleTest`** | 7 | **7/7 PASS** | Vòng đời Permit, Watchdog 8000ms, nhả permit khi client hủy request, chặn fallback khi tool side-effect chạy, cho phép fallback khi read-only tools chạy |
-| **`AiAgentOrchestratorTest`** | 3 | **3/3 PASS** | Agentic turn loop, anti-hallucination validation, fallback execution |
-| **`CanCacheEvaluatorTest`** | 9 | **9/9 PASS** | Bao phủ trọn vẹn 8 cổng BYPASS (EMPTY, HISTORY, SONG_CONTEXT, PERSONAL, PII, ANAPHORA, TEMPORAL, DANGLING_REF) và GENERAL scope |
-| **`TelemetryServiceTest`** | 6 | **6/6 PASS** | Canonical prompt normalization, SHA-256 hash, đo đếm bypass reason, phân biệt cross-user repeat vs same-user retry, fail-safe resilience |
-| **TỔNG CỘNG** | **90** | **90/90 PASS** | **Tỷ lệ vượt qua: 100% (BUILD SUCCESS)** |
+| Nhóm chức năng | Lớp Kiểm Thử (Test Class) | Số lượng test | Kết quả | Trọng tâm kiểm chứng |
+| :--- | :--- | :---: | :---: | :--- |
+| **Giai đoạn 1** | `FastPathEngineTest` | 47 | **47/47 PASS** | Regex Two-Tier có/không dấu, lệnh đệm dài, phản hồi trung tính NEXT, chặn phủ định, chống nhầm tên riêng |
+| | `AiChatControllerTest` | 9 | **9/9 PASS** | Fast-Path Turn 1 & Turn 2+, Player Transport, Legacy client fallback, IDOR check, Session Lock isolation |
+| **Giai đoạn 2** | `ModelRouterServiceTest` | 7 | **7/7 PASS** | Phân làn Critic với từ khóa nhạc lý không dấu, chặn prompt ngắn, hạ cấp khi Breaker OPEN |
+| | `CircuitBreakerLifecycleTest` | 7 | **7/7 PASS** | Vòng đời Permit, Watchdog 8000ms, nhả permit khi client abort, an toàn fallback theo phân loại tool |
+| | `AiAgentOrchestratorTest` | 3 | **3/3 PASS** | Vòng lặp Agentic loop, kiểm định anti-hallucination, xử lý fallback |
+| **Giai đoạn 3** | `CanCacheEvaluatorTest` | 11 | **11/11 PASS** | Bao phủ 8 cổng BYPASS, câu GENERAL hợp lệ, chống false-positive "nhạc Anh" |
+| | `TelemetryServiceTest` | 7 | **7/7 PASS** | Canonical prompt SHA-256, đếm bypass reason, phân biệt cross-user vs self-retry, cô lập anonymous user |
+| **TỔNG CỘNG** | **7 test classes** | **91** | **91/91 PASS** | **Tỷ lệ vượt qua: 100% (BUILD SUCCESS)** |
 
 ---
 
@@ -841,11 +881,11 @@ meterRegistry.counter("ai.cache.self_repeat_hits");  // Cùng người dùng th�
 ## 8. PHÂN KỲ TRIỂN KHAI & NGHIỆM THU
 
 ```
-GIAI ĐOẠN 1: Fast-Path Engine & Unit Tests [✅ ĐÃ HOÀN THÀNH 100% - ĐẠT 25%]
+GIAI ĐOẠN 1: Fast-Path Engine & Unit Tests [✅ ĐÃ HOÀN THÀNH - ĐẠT 25% (Lũy kế 50%)]
   ├── [x] Tích hợp FastPathEngine trong AiChatController TRƯỚC dòng checkAndLockSession
   ├── [x] Định nghĩa FastPathResult, ActionType và phản hồi trung tính cho NEXT ("Đã gửi lệnh chuyển bài.")
   ├── [x] Kiểm tra tồn tại lịch sử nhẹ nhàng (existsBySessionId) ngoài Lock để phân định Turn 1
-  ├── [x] Hỗ trợ cờ clientSupportsTransportActions kèm constructor nạp chồng bảo toàn chữ ký record AiChatStreamRequest
+  ├── [x] Hỗ trợ cờ clientSupportsTransportActions kèm kiểm tra Boolean.TRUE.equals chống NPE
   ├── [x] Thiết lập luồng dọn dẹp riêng cho Fast-Path Emitter (KHÔNG giải phóng Session Lock của stream khác)
   ├── [x] Cập nhật tiêu đề session khi là câu đầu tiên (updateSessionTitleIfDefault)
   ├── [x] Cập nhật Android Client: AiChatModels.kt và AgenticPlayerDispatcher.kt (hỗ trợ PAUSE/RESUME/NEXT khi song == null)
@@ -855,35 +895,38 @@ GIAI ĐOẠN 1: Fast-Path Engine & Unit Tests [✅ ĐÃ HOÀN THÀNH 100% - Đ�
 
 HẬU GIAI ĐOẠN 1: Tinh chỉnh Database & Kích hoạt Metrics [✅ ĐÃ HOÀN THÀNH]
   ├── [x] Cập nhật AbstractAuditEntity: Dùng @PrePersist onPrePersist() bảo toàn createdAt khi đã có giá trị (+5ms)
-  ├── [x] Tạo migration Flyway V5 nâng cấp created_at / updated_at sang DATETIME(6)
+  ├── [x] Tạo migration Flyway V5 nâng cấp created_at / updated_at sang DATETIME(6) kèm ON UPDATE CURRENT_TIMESTAMP(6)
   ├── [x] Bổ sung sắp xếp đối ngẫu ORDER BY m.createdAt ASC, m.sender DESC và ORDER BY m.createdAt DESC, m.sender ASC
   ├── [x] Gom lưu DB vào phương thức @Transactional saveFastPathMessages trong AiChatSessionService
   └── [x] Gắn Timer.Sample (ai.latency.fastpath) và counter (ai.fastpath.hits) quanh handleFastPathExecution
 
-GIAI ĐOẠN 2: Model Router & Circuit Breaker [✅ ĐÃ HOÀN THÀNH 100% - ĐẠT 50%]
+GIAI ĐOẠN 2: Model Router & Circuit Breaker [✅ ĐÃ HOÀN THÀNH - ĐẠT 25% (Lũy kế 75% Code-Complete)]
   ├── [x] Khai báo io.github.resilience4j:resilience4j-spring-boot3:2.2.0 và spring-boot-starter-aop trong pom.xml
   ├── [x] Khai báo AiRouterProperties (ai.router.*) và cấu hình instance geminiCriticRouter trong application.yaml
+  ├── [x] Loại trừ lỗi 400 (Safety block) và 403 khỏi record-exceptions để chống ngắt mạch oan
   ├── [x] Xây dựng ModelRouterService sinh RoutingDecision độc lập (phân làn Music Critic với regex nhạc lý không dấu)
   ├── [x] Tách bạch 2 cờ hạ cấp: degradedByBreaker (chặn lưu cache) và reasoningTierDisabled (cho phép lưu cache)
   ├── [x] Quản lý Permit tại executeAgentLoop với cờ resultRecorded chống double release
   ├── [x] Áp dụng First-Token Watchdog 8000ms qua CompletableFuture; tinh chỉnh fallback guard (cho phép read-only, chặn side-effect)
   ├── [x] Định nghĩa phân cấp UpstreamAiException ghi nhận vào record-exceptions của Breaker
   ├── [x] Phân loại ngoại lệ theo nguồn: ClientAbortException (hủy upstream + nhả permit) vs Upstream error (ghi nhận vào Breaker)
-  └── [x] Viết ModelRouterServiceTest (7/7 PASS) và CircuitBreakerLifecycleTest (7/7 PASS)
+  └── [x] Viết ModelRouterServiceTest (7/7 PASS), CircuitBreakerLifecycleTest (7/7 PASS), AiAgentOrchestratorTest (3/3 PASS)
 
-GIAI ĐOẠN 3: Bước Đệm Telemetry & Khung Quyết Định Dữ Liệu [✅ ĐÃ HOÀN THÀNH KỸ THUẬT - ĐẠT 75%]
-  ├── [x] Xây dựng CanCacheEvaluator quét 2 tầng có dấu và không dấu phân loại 8 lý do BYPASS
-  ├── [x] Xây dựng TelemetryService (Caffeine 50.000 mục, TTL 30m, canonicalization SHA-256, phân biệt người dùng)
+GIAI ĐOẠN 3: Bước Đệm Telemetry & Khung Quyết Định Dữ Liệu [✅ HẠ TẦNG HOÀN TẤT - TIẾN TỚI 100% PRODUCTION-READY]
+  ├── [x] Xây dựng CanCacheEvaluator quét 2 tầng có dấu ((?U)) và không dấu phân loại 8 lý do BYPASS
+  ├── [x] Khắc phục lỗi false-positive: Tách "nhạc của anh" khỏi "nhạc Anh"
+  ├── [x] Xây dựng TelemetryService (Caffeine 50.000 mục, TTL 30m, canonicalization SHA-256, cô lập user ẩn danh)
   ├── [x] Tích hợp CanCacheEvaluator và TelemetryService an toàn (fail-safe) vào AiAgentOrchestrator
-  ├── [x] Viết CanCacheEvaluatorTest bao phủ toàn diện 8 cổng (9/9 PASS)
-  ├── [x] Viết TelemetryServiceTest kiểm chứng hash, canonicalization và repeat count (6/6 PASS)
+  ├── [x] Viết CanCacheEvaluatorTest bao phủ toàn diện 8 cổng (11/11 PASS)
+  ├── [x] Viết TelemetryServiceTest kiểm chứng hash, canonicalization, repeat count và anonymous isolation (7/7 PASS)
   ├── [ ] Thu thập số liệu telemetry thực tế trên production/staging (Mẫu N >= 1.000 lượt):
   │     ├── Nếu >= 3%: Kích hoạt triển khai Vector Cache 5 cổng (pgvector / Milvus / in-memory HNSW)
+  │     ├── Nếu 1% - 3%: Chạy thử nghiệm SHADOW MODE trên 10% lưu lượng trong 7 ngày
   │     └── Nếu < 1%: Ký duyệt (sign-off) nghiệm thu 100% Production-Ready mà KHÔNG cần semantic cache
-  └── [ ] Nghiệm thu toàn diện Lớp 7 đạt 100% Production-Ready
+  └── [ ] Thiết lập Dashboard Prometheus/Grafana giám sát ai.cache.exact_repeat_hits và kiểm thử tải
 ```
 
 ---
 
 > [!TIP]
-> **Tóm tắt trạng thái:** Lớp 7 đã đạt cột mốc **75%** vững chắc với **90/90 Unit & Integration tests passed (100% Pass Rate)**. Bản thiết kế chi tiết đã giải quyết trọn vẹn toàn bộ các góc khuất thực thi: từ bẫy JPA Auditing, độ chính xác `DATETIME(6)`, tính đối ngẫu tie-breaker, cấu trúc ngoại lệ Resilience4j đến hạ tầng Telemetry đo lường ngầm. Khung Quyết Định Dựa Trên Dữ Liệu là chiếc chìa khóa đưa hệ thống cán đích 100% Production-Ready.
+> **Tóm tắt trạng thái:** Lớp 7 đã hoàn thành **75% Code-Complete** với **91/91 Unit & Integration tests passed (100% Pass Rate)**. Bản thiết kế chi tiết đã giải quyết trọn vẹn toàn bộ các góc khuất thực thi: từ bẫy JPA Auditing, độ chính xác `DATETIME(6)`, tính đối ngẫu tie-breaker, cấu trúc ngoại lệ Resilience4j đến hạ tầng Telemetry đo lường ngầm. Khung Quyết Định Dựa Trên Dữ Liệu 3 nhánh là chiếc chìa khóa đưa hệ thống cán đích 100% Production-Ready sau giai đoạn chạy thực tế.

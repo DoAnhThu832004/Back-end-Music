@@ -19,14 +19,15 @@ public class CanCacheEvaluator {
     private static final Pattern COMBINING_DIACRITICAL_MARKS = Pattern.compile("\\p{InCombiningDiacriticalMarks}+");
     private static final Pattern TRAILING_PUNCTUATION = Pattern.compile("[!?.,;:]+$");
 
-    // 1. Dữ liệu cá nhân (Personal Data) - Quét có dấu và không dấu
+    // 1. Dữ liệu cá nhân (Personal Data) - Quét có dấu (UNICODE (?U)) và không dấu
+    // Lưu ý: Bắt buộc có "của" cho đại từ để tránh bắt nhầm "nhạc Anh" (nhạc nước Anh/tiếng Anh) thành personal data
     private static final Pattern PERSONAL_ACCENTED = Pattern.compile(
-            "\\b(?:của (?:tôi|mình|em|anh)|gu (?:của )?(?:tôi|mình|em|anh)|playlist (?:của )?(?:tôi|mình|em|anh)|danh sách (?:của )?(?:tôi|mình|em|anh)|nhạc (?:của )?(?:tôi|mình|em|anh)|bài (?:hát )?(?:của )?(?:tôi|mình) (?:yêu )?thích|(?:tôi|mình) (?:hay nghe|yêu thích|thích|đã nghe)|lịch sử nghe)\\b",
+            "(?U)\\b(?:của (?:tôi|mình|em|anh)|gu (?:của )?(?:tôi|mình|em|anh)|playlist (?:của )?(?:tôi|mình|em|anh)|danh sách (?:của )?(?:tôi|mình|em|anh)|nhạc của (?:tôi|mình|em|anh)|bài (?:hát )?(?:của )?(?:tôi|mình) (?:yêu )?thích|(?:tôi|mình) (?:hay nghe|yêu thích|thích|đã nghe)|lịch sử nghe)\\b",
             Pattern.CASE_INSENSITIVE
     );
 
     private static final Pattern PERSONAL_UNACCENTED = Pattern.compile(
-            "\\b(?:cua (?:toi|minh|em|anh)|gu (?:cua )?(?:toi|minh|em|anh)|playlist (?:cua )?(?:toi|minh|em|anh)|danh sach (?:cua )?(?:toi|minh|em|anh)|nhac (?:cua )?(?:toi|minh|em|anh)|bai (?:hat )?(?:cua )?(?:toi|minh) (?:yeu )?thich|(?:toi|minh) (?:hay nghe|yeu thich|thich|da nghe)|lich su nghe)\\b",
+            "\\b(?:cua (?:toi|minh|em|anh)|gu (?:cua )?(?:toi|minh|em|anh)|playlist (?:cua )?(?:toi|minh|em|anh)|danh sach (?:cua )?(?:toi|minh|em|anh)|nhac cua (?:toi|minh|em|anh)|bai (?:hat )?(?:cua )?(?:toi|minh) (?:yeu )?thich|(?:toi|minh) (?:hay nghe|yeu thich|thich|da nghe)|lich su nghe)\\b",
             Pattern.CASE_INSENSITIVE
     );
 
@@ -37,7 +38,7 @@ public class CanCacheEvaluator {
 
     // 3. Đại từ thay thế phụ thuộc ngữ cảnh (Anaphora)
     private static final Pattern ANAPHORA_ACCENTED = Pattern.compile(
-            "\\b(?:bài này|bài đó|bài vừa rồi|bài trước|ca khúc này|ca khúc đó)\\b",
+            "(?U)\\b(?:bài này|bài đó|bài vừa rồi|bài trước|ca khúc này|ca khúc đó)\\b",
             Pattern.CASE_INSENSITIVE
     );
 
@@ -48,7 +49,7 @@ public class CanCacheEvaluator {
 
     // 4. Từ khóa thời gian thực (Temporal)
     private static final Pattern TEMPORAL_ACCENTED = Pattern.compile(
-            "\\b(?:hôm nay|bây giờ|hiện tại|mới nhất|sáng nay|tối nay|tuần này|tháng này|năm nay)\\b",
+            "(?U)\\b(?:hôm nay|bây giờ|hiện tại|mới nhất|sáng nay|tối nay|tuần này|tháng này|năm nay)\\b",
             Pattern.CASE_INSENSITIVE
     );
 
@@ -59,7 +60,7 @@ public class CanCacheEvaluator {
 
     // 5. Quy chiếu lửng lơ (Dangling References)
     private static final Pattern DANGLING_ACCENTED = Pattern.compile(
-            "\\b(?:còn bài nào|bài tiếp theo|tiếp đi|nữa không|còn không)\\b",
+            "(?U)\\b(?:còn bài nào|bài tiếp theo|tiếp đi|nữa không|còn không)\\b",
             Pattern.CASE_INSENSITIVE
     );
 

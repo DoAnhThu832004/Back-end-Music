@@ -15,6 +15,7 @@ import java.security.NoSuchAlgorithmException;
 import java.text.Normalizer;
 import java.util.HexFormat;
 import java.util.Locale;
+import java.util.UUID;
 import java.util.concurrent.TimeUnit;
 import java.util.regex.Pattern;
 
@@ -72,7 +73,9 @@ public class TelemetryService {
             String canonical = toCanonicalPrompt(rawPrompt);
             String sha256 = computeSha256(canonical);
 
-            String effectiveUser = (userId != null && !userId.isBlank()) ? userId : "anonymous";
+            String effectiveUser = (userId != null && !userId.isBlank())
+                    ? userId
+                    : "anon-" + UUID.randomUUID().toString();
             String existingUser = repeat30mCache.getIfPresent(sha256);
 
             if (existingUser != null) {

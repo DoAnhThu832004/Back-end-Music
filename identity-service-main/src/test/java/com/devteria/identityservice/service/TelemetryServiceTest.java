@@ -111,6 +111,27 @@ class TelemetryServiceTest {
     }
 
     @Test
+    @DisplayName("Hai người dùng ẩn danh (userId null) gửi câu hỏi giống nhau không bị tính nhầm thành tự lặp")
+    void testAnonymousUsersDoNotCollideAsSelfRepeat() {
+        CacheEvaluationResult generalResult = CacheEvaluationResult.general();
+        String prompt = "Giải thích thang âm ngũ cung";
+
+        // Người dùng ẩn danh 1 gửi câu hỏi
+        telemetryService.recordPromptTelemetry(null, prompt, generalResult);
+        assertEquals(1, telemetryService.getCacheSize());
+        assertNull(meterRegistry.find("ai.cache.self_repeat_hits").counter());
+
+        // Người dùng ẩn danh 2 gửi câu hỏi tương tự
+        telemetryService.recordPromptTelemetry(null, prompt, generalResult);
+        // Không bị tính vào self_repeat_hits
+        assertNull(meterRegistry.find("ai.cache.self_repeat_hits").counter());
+        // Được tính chính xác vào exact_repeat_hits
+        Counter exactRepeatCounter = meterRegistry.find("ai.cache.exact_repeat_hits").counter();
+        assertNotNull(exactRepeatCounter);
+        assertEquals(1.0, exactRepeatCounter.count());
+    }
+
+    @Test
     @DisplayName("Đảm bảo an toàn Fail-safe khi tham số bất thường hoặc null")
     void testFailSafeResilience() {
         assertDoesNotThrow(() -> {
