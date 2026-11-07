@@ -5,6 +5,7 @@
 
 ---
 
+<a id="muc-1-hien-trang"></a>
 ## 📌 1. ĐÁNH GIÁ HIỆN TRẠNG & PHÂN RÃ TIẾN ĐỘ CHUẨN XÁC
 
 > [!NOTE]
@@ -77,8 +78,19 @@ Tiến độ của Lớp 7 được tính toán minh bạch dựa trên 4 thành
 * **Loại Trừ Lỗi Client (400/403) Khỏi Circuit Breaker & Cảnh Báo Prometheus `increase()`:**
   * `RestClientResponseException` được thu hẹp lại: Chỉ ghi nhận `UpstreamAiException`, `HttpServerErrorException` (5xx), `ResourceAccessException` và `HttpClientErrorException.TooManyRequests` (429) vào `record-exceptions`.
   * Đưa `HttpClientErrorException.BadRequest` (400 - Safety block của Google, prompt vi phạm) và `Forbidden` (403) vào `ignore-exceptions`. Điều này ngăn chặn việc Circuit Breaker cho persona `MUSIC_CRITIC` bị nảy ngắt mạch oan uổng khi người dùng gửi prompt vi phạm chính sách của Google.
-  * Khai báo counter `ai.gemini.client.errors` (400/403) và `ai.gemini.safety.blocks` (in-stream HTTP 200) với nhãn `category` được giới hạn qua enum hữu hạn `SafetyBlockCategory`.
-  * **Cảnh báo Prometheus Alert độc lập:** Áp dụng cú pháp chuẩn `(sum(increase(ai_gemini_client_errors_total{status=~"400|403"}[5m])) or on() vector(0)) + (sum(increase(ai_gemini_safety_blocks_total[5m])) or on() vector(0)) > 5`. Cấu trúc `or on() vector(0)` loại trừ lỗi phép cộng vector khi series vắng mặt; ngưỡng `> 5` là giá trị tham khảo khởi điểm cho dev/staging và bắt buộc phải được hiệu chỉnh theo baseline lưu lượng thực tế trên Production.
+  * **Đặc tả Bounded Cardinality qua `SafetyBlockCategory` (Đưa vào checklist `[ ]`):**
+    - Google Gemini trả về lý do chặn tự do ở 2 cấp độ: Prompt Level (`promptFeedback.blockReason`) và Candidate Stream (`candidates[0].finishReason`).
+    - Để ngăn chặn bùng nổ cardinality nhãn trên Prometheus TSDB, hệ thống thiết kế enum hữu hạn `SafetyBlockCategory` gồm 5 giá trị: `SAFETY`, `HARM`, `RECITATION`, `POLICY`, `OTHER` kèm bảng ánh xạ chi tiết và phương thức `fromGemini(rawReason)`.
+    - Counter `ai.gemini.safety.blocks` mang 2 nhãn cố định: `category` (1 trong 5 giá trị enum trên) và `type` với đúng 2 giá trị xác định: `"prompt"` (bị chặn đầu vào bởi Google) hoặc `"response"` (bị ngắt stream giữa chừng vì an toàn/bản quyền). Hạng mục này được quản lý trong checklist `[ ]` và sẽ triển khai mã nguồn Java kèm unit test cùng đợt với hạ tầng alert.
+  * **Cảnh báo Prometheus Alert Độc Lập & Bẫy Đăng Ký Trễ (Lazy Registration):**
+    - Áp dụng cú pháp chuẩn:
+      ```promql
+      (sum(increase(ai_gemini_client_errors_total{status=~"400|403"}[5m])) or on() vector(0))
+      +
+      (sum(increase(ai_gemini_safety_blocks_total[5m])) or on() vector(0)) > 5
+      ```
+    - **Lý do kỹ thuật của `or on() vector(0)`:** Trong Spring Boot Actuator với Micrometer, các Counter chỉ xuất hiện trên endpoint `/actuator/prometheus` sau lần gọi `.increment()` đầu tiên (Lazy Registration). Nếu từ khi khởi động chưa phát sinh lỗi client hoặc safety block, series tương ứng hoàn toàn vắng mặt trong Prometheus TSDB. Khi đó, phép cộng vector `A + B` sẽ trả về **tập rỗng (empty set)** và alert bị câm. Cấu trúc `or on() vector(0)` đảm bảo vế vắng mặt luôn nhận giá trị số 0 để phép cộng và ngưỡng cảnh báo hoạt động tin cậy.
+    - **Baseline lưu lượng thực:** Ngưỡng `> 5` trong 5 phút là giá trị tham khảo khởi điểm cho dev/staging; trên Production, ngưỡng alert bắt buộc phải được hiệu chuẩn theo baseline lưu lượng thực tế (ví dụ: trung bình 7 ngày + 3 sigma hoặc vượt 5% tổng request 5 phút).
 * **Vòng Đời Permit, Watchdog 8000ms, Bản Chất SO_TIMEOUT (15s) & `future.cancel(true)`:**
   * Cấp permit qua `tryAcquirePermission()`, bảo vệ chống double-release bằng `AtomicBoolean resultRecorded`.
   * Watchdog 8000ms thực thi qua `CompletableFuture.supplyAsync(..., aiStreamingExecutor)` trên Virtual Threads, cách ly hoàn toàn với ForkJoinPool.
@@ -101,7 +113,10 @@ Tiến độ của Lớp 7 được tính toán minh bạch dựa trên 4 thành
   * Chuẩn hóa Canonical Prompt: NFC $\rightarrow$ bỏ dấu (`VietnameseTextNormalizer.stripDiacritics`) $\rightarrow$ cắt dấu câu cuối $\rightarrow$ gộp khoảng trắng thừa $\rightarrow$ lowercase $\rightarrow$ SHA-256 tích hợp Persona.
   * Tách biệt người dùng ẩn danh: Khi `userId` rỗng/null, ghi nhận `ai.cache.anonymous_prompts` và không lưu vào repeat cache nhằm loại trừ sai lệch dữ liệu lặp lại liên người dùng.
   * Hoàn toàn bọc trong khối `try-catch` **fail-safe**, không bao giờ làm gián đoạn luồng đàm thoại.
-  * **Minh bạch Hóa Đo lường Telemetry:** Prompt rỗng được thoát sớm (sai lệch biên $< 0.01\%$); giới hạn 50k W-TinyLFU và đặc thù in-memory single-instance làm tăng tính chất "cận dưới thận trọng" (Strict Lower Bound) của số đo potential cache hit rate. Khi mở rộng nhiều instance, sử dụng Prometheus aggregation hoặc Redis nguyên tử `SET telemetry:24h:{sha256} {userId} EX 86400 NX GET` (trên Redis 7+ hoặc Lua script) để vừa kiểm tra sự tồn tại của khóa vừa đọc `oldUserId` phân biệt chính xác giữa self-repeat (`oldUserId == userId`) và cross-user repeat (`oldUserId != userId`). Tuyệt đối không dùng HyperLogLog vì không hỗ trợ kiểm tra tồn tại.
+  * **Minh bạch Hóa Đo lường Telemetry:** Prompt rỗng được thoát sớm (sai lệch biên $< 0.01\%$); giới hạn 50k W-TinyLFU và đặc thù in-memory single-instance làm tăng tính chất "cận dưới thận trọng" (Strict Lower Bound) của số đo potential cache hit rate. Khi mở rộng nhiều instance, sử dụng Prometheus aggregation hoặc Redis nguyên tử `SET telemetry:24h:{sha256} {userId} EX 86400 NX GET` (hỗ trợ từ Redis 7.0+ hoặc Lua script trên bản cũ hơn). Lệnh này có cơ chế hoạt động đặc thù:
+  - Khi khóa chưa tồn tại: Redis ghi giá trị `userId`, thiết lập TTL 86.400s (24h) và trả về `nil` (xác định là Prompt mới).
+  - Khi khóa đã tồn tại: Redis trả về giá trị cũ `oldUserId`, **không ghi đè giá trị và KHÔNG làm mới/gia hạn TTL** (do cờ `NX`). Điều này bảo đảm cửa sổ 24 giờ được tính cố định từ lần xuất hiện đầu tiên, khớp chính xác với hành vi `expireAfterWrite(24, TimeUnit.HOURS)` của Caffeine Cache.
+  - Phân loại: Nếu `oldUserId.equals(userId)` $\implies$ Self-repeat; nếu `!oldUserId.equals(userId)` $\implies$ Cross-user repeat. Tuyệt đối không dùng HyperLogLog vì không hỗ trợ kiểm tra sự tồn tại của từng phần tử.
 
 ---
 
@@ -143,6 +158,7 @@ flowchart TD
 
 ---
 
+<a id="muc-4-kiem-thu"></a>
 ## 📊 4. KẾT QUẢ ĐỐI CHUẨN THỰC NGHIỆM (109/109 TESTS PASS)
 
 Bảng phân bổ chi tiết kết quả kiểm thử tự động trên Maven với JDK 21 (đảm bảo tính chính xác số học 100%):
@@ -161,6 +177,7 @@ Bảng phân bổ chi tiết kết quả kiểm thử tự động trên Maven v
 
 ---
 
+<a id="muc-5-danh-muc"></a>
 ## 🚀 5. DANH MỤC CÔNG VIỆC THEO 3 GIAI ĐOẠN
 
 ```
@@ -189,7 +206,9 @@ GIAI ĐOẠN 2: Model Router & Circuit Breaker [✅ ĐÃ HOÀN THÀNH - ĐẠT 2
   ├── [x] Khai báo io.github.resilience4j:resilience4j-spring-boot3:2.2.0 và spring-boot-starter-aop trong pom.xml
   ├── [x] Khai báo AiRouterProperties (ai.router.*) và cấu hình instance geminiCriticRouter trong application.yaml
   ├── [x] Loại trừ lỗi 400 (Safety block) và 403 khỏi record-exceptions để chống ngắt mạch oan
-  ├── [ ] Thiết lập cảnh báo Prometheus Alert độc lập cho lỗi 400/403 và in-stream safety blocks (đã thiết kế rule PromQL increase(), chờ cấu hình hạ tầng)
+  ├── [ ] Thiết lập cảnh báo Prometheus Alert độc lập cho lỗi 400/403 và in-stream safety blocks:
+  │     ├── [ ] Định nghĩa enum SafetyBlockCategory (SAFETY, HARM, RECITATION, POLICY, OTHER) và hàm ánh xạ fromGemini() kèm bộ unit test
+  │     └── [ ] Cấu hình rule Prometheus Alerting với PromQL increase() kết hợp or on() vector(0) và hiệu chỉnh theo baseline lưu lượng thực
   ├── [x] Xây dựng ModelRouterService sinh RoutingDecision độc lập (phân làn Music Critic với regex nhạc lý không dấu)
   ├── [x] Tách bạch 2 cờ hạ cấp: degradedByBreaker (chặn lưu cache) và reasoningTierDisabled (cho phép lưu cache)
   ├── [x] Quản lý Permit tại executeAgentLoop với cờ resultRecorded chống double release
