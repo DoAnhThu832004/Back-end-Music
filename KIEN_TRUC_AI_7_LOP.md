@@ -128,7 +128,7 @@ public ExecutorService aiStreamingExecutor() {
 Trong `AiPersonaPromptFactory.java`, hệ thống hỗ trợ 3 Persona âm nhạc chuyên biệt:
 1. `GENZ_DJ`: Năng động, dùng từ lóng Gen Z (*"cháy"*, *"nghiện điên"*, *"bật nóc"*).
 2. `MUSIC_CRITIC`: Phân tích chuyên sâu về nhạc lý, cấu trúc hòa âm, phối khí.
-3. `HEALING_BUDDY`: Nhẹ nhàng, đồng cảm, gợi ý các bài hát êm dịu xoa dịu tâm hồn.
+3. `HEALING_FRIEND`: Nhẹ nhàng, đồng cảm, gợi ý các bài hát êm dịu xoa dịu tâm hồn (thay thế tên nháp cũ `HEALING_BUDDY` để khớp 100% với enum `com.devteria.identityservice.enums.AiPersona`).
 
 ---
 
@@ -199,11 +199,13 @@ Lớp 7 là đỉnh cao của kiến trúc tối ưu hóa hiệu năng, giảm t
 
 ### 7.1. Fast-Path Command Engine (< 10ms)
 * **Vị trí trước Session Lock:** Chạy trước `checkAndLockSession` để người dùng có thể gửi lệnh *"tạm dừng"* ngay lập tức mà không bị chặn khi bot đang stream câu trả lời dài.
-* **Regex 2 Tầng Siêu Tốc:** Quét có dấu (NFC) và không dấu (`stripDiacritics`), xử lý chào hỏi Turn 1 và lệnh Player Transport (`PAUSE`, `RESUME`, `NEXT` với phản hồi trung tính *"Đã gửi lệnh chuyển bài."*).
-* **Độ chính xác Microsecond & Dual Tie-Breaker:**
+* **Regex 2 Tầng Siêu Tốc & Bổ sung "Bài Tiếp Theo":** Quét có dấu (NFC) và không dấu (`VietnameseTextNormalizer.stripDiacritics`), xử lý chào hỏi Turn 1, giới thiệu danh tính và lệnh Player Transport (`PAUSE`, `RESUME`, `NEXT` với phản hồi đồng bộ *"Đã gửi lệnh chuyển bài."*). Hỗ trợ đầy đủ biến thể *"bài tiếp theo"* / *"bai tiep theo"*.
+* **Độ chính xác Microsecond & Dual Tie-Breaker (String Lexicographical):**
   * Migration Flyway `V5` nâng cấp `created_at` / `updated_at` lên `DATETIME(6)`.
   * `@Transactional saveFastPathMessages` gom lưu `userMessage` và `aiMessage` (+5ms).
-  * Sắp xếp đối ngẫu `ORDER BY m.createdAt ASC, m.sender DESC` (truy vấn xuôi) và `ORDER BY m.createdAt DESC, m.sender ASC` (Sliding Window) đảm bảo thứ tự USER $\rightarrow$ AI luôn bất biến.
+  * `ChatMessage` lưu `sender` dạng `@Enumerated(EnumType.STRING)` trên cột `VARCHAR(16)`. Trong mã ASCII: `'U'` (85) > `'A'` (65) nên `'USER' > 'AI'`.
+  * Sắp xếp đối ngẫu chuẩn xác: `ORDER BY m.createdAt ASC, m.sender DESC` (truy vấn xuôi, USER trước AI) và `ORDER BY m.createdAt DESC, m.sender ASC` (Sliding Window ngược, AI trước USER, sau khi `Collections.reverse()` thì USER luôn đứng trước AI).
+* **Phân tích Rủi ro & Chiến lược Phòng thủ Phủ định Không Dấu:** Ghi nhận rủi ro khi Tier 2 mở rộng bề mặt so khớp; đề xuất bổ sung bộ lọc phủ định không dấu (`dung tat nhac`, `ko dung lai`) tại Bước 2 trong đợt refactor tiếp theo.
 
 ### 7.2. Dynamic Model Router & Resilience4j Circuit Breaker
 * **Định tuyến Mô hình Thông minh:**
@@ -212,13 +214,16 @@ Lớp 7 là đỉnh cao của kiến trúc tối ưu hóa hiệu năng, giảm t
 * **Ngắt Mạch Resilience4j & First-Token Watchdog 8000ms:**
   * Cấu hình instance `geminiCriticRouter` (sliding window 120s, failure rate 50%, wait in open 30s).
   * Phân cấp ngoại lệ `UpstreamAiException` để Circuit Breaker ghi nhận chính xác mọi lỗi I/O của Gemini; loại trừ 400 (Safety block) và 403 khỏi `record-exceptions` chống ngắt mạch oan.
-  * First-token Watchdog 8000ms thực thi qua `CompletableFuture.supplyAsync(..., aiStreamingExecutor)` trên Virtual Threads, triệt tiêu nguy cơ nghẽn thread pool.
+  * **Phân định Socket Timeout (15s vs 90s):** First-token Watchdog 8000ms thực thi qua `CompletableFuture.supplyAsync(..., aiStreamingExecutor)` trên Virtual Threads và **bắt buộc gọi qua `geminiRestClient` (15s read timeout)**. Khi Watchdog cancel sau 8s, kết nối HTTP chỉ treo tối đa 7s (15s - 8s) rồi tự đóng, không dùng `geminiStreamRestClient` (90s).
+  * **Giám sát Safety Blocks & Alert độc lập:** Xử lý in-stream safety block HTTP 200 (`promptFeedback.blockReason`, `finishReason=SAFETY`) như HTTP OK đối với Breaker, đồng thời thiết lập cảnh báo Prometheus độc lập `sum(rate(ai_gemini_client_errors_total{status=~"400|403"}[5m])) > threshold`.
 * **Tinh chỉnh Fallback Guard (Read-only vs Side-effect):**
   * Cho phép fallback an toàn về Flash khi chỉ gọi các tool đọc (`search_music_library`).
   * Chặn đứng fallback khi đã gọi tool có tác dụng phụ (`trigger_player_action`, `propose_ai_playlist`) để ngăn lỗi Double Mutation.
 
 ### 7.3. CanCacheEvaluator & Hạ Tầng Telemetry Ngầm
-* **8 Cổng Kiểm Định Cache:** Quét 2 tầng Có dấu (cờ `(?U)`) và Không dấu phân loại 8 lý do BYPASS: `EMPTY_PROMPT`, `HISTORY`, `HAS_SONG_CONTEXT`, `PERSONAL`, `PII`, `ANAPHORA`, `TEMPORAL`, `DANGLING_REF`. Khắc phục triệt để lỗi false-positive bắt nhầm "nhạc Anh" (nhạc nước Anh / tiếng Anh) thành dữ liệu cá nhân.
+* **8 Cổng Kiểm Định Cache & Giảm Thiểu False-Positive:** Quét 2 tầng Có dấu (cờ `(?U)`) và Không dấu phân loại 8 lý do BYPASS: `EMPTY_PROMPT`, `HISTORY`, `HAS_SONG_CONTEXT`, `PERSONAL`, `PII`, `ANAPHORA`, `TEMPORAL`, `DANGLING_REF`. Áp dụng pattern `nhạc của (?:tôi|mình|em|anh)` giúp giảm thiểu false-positive (chấp nhận over-bypass có chủ ý cho *"nhạc của anh"* để bảo vệ quyền riêng tư).
+* **Gọi trực tiếp tiện ích:** Sử dụng trực tiếp `VietnameseTextNormalizer.stripDiacritics(lowerAccented)` thay vì bọc wrapper method.
+* **Loại trừ dữ liệu biến động nhanh ở Bước 8:** Bổ sung điều kiện `!usedTool("get_top_trending_songs")` vào bộ tiêu chuẩn lưu cache để chống hiện tượng cache kết quả bảng xếp hạng nhanh lỗi thời (Stale Data).
 * **TelemetryService (Caffeine 50k, 30m & 24h):**
   * Chuẩn hóa Canonical Prompt $\rightarrow$ SHA-256 tích hợp Persona (`persona:canonical`), triệt để tuân thủ nguyên tắc Persona Isolation (Cổng 1 của Cache).
   * Phân biệt rõ rệt giữa lặp lại liên người dùng (`ai.cache.exact_repeat_hits` / `ai.cache.exact_repeat_24h_hits`) và cùng người dùng thử lại (`ai.cache.self_repeat_hits` / `ai.cache.self_repeat_24h_hits`).
@@ -227,9 +232,10 @@ Lớp 7 là đỉnh cao của kiến trúc tối ưu hóa hiệu năng, giảm t
 
 ### 7.4. Khung Quyết Định Kiến Trúc Dựa Trên Dữ Liệu 3 Nhánh
 * Thu thập dữ liệu thực tế với cỡ mẫu đủ lớn $N \ge 5.000$ lượt hợp lệ (hoặc tối thiểu 3.000 lượt trên Staging/Production trong 14 ngày) để bảo đảm lực thống kê (Statistical Power) cho ngưỡng 1% và 3%:
+  * **Bản chất Metric:** Công thức tính phản ánh **Tỷ lệ Cache Hit tiềm năng (Potential Cache Hit Rate)** nếu hệ thống có cache; không phải là hit rate của một cache đang chạy thật (vì lượt đầu $k=1$ luôn là MISS).
   * **Nếu Tỷ lệ Lặp lại Độc lập $\ge 3\%$:** Triển khai Hệ thống Vector Cache 5 cổng + Event Invalidation.
   * **Nếu Tỷ lệ Lặp lại từ $1\% - 3\%$:** Kích hoạt chế độ **SHADOW MODE** trên 10% lưu lượng trong 7 ngày để đo lường độ trễ và mức tiết kiệm token thực tế trước khi cấp phát tài nguyên cho Vector DB.
-  * **Nếu Tỷ lệ Lặp lại Độc lập $< 1\%$:** **Ký duyệt (Sign-off) Nghiệm thu 100% Production-Ready mà KHÔNG cần Semantic Cache**. Tiết kiệm bộ nhớ RAM, CPU và giảm chi phí vận hành (Pragmatic Engineering).
+  * **Nếu Tỷ lệ Lặp lại Độc lập $< 1\%$:** **Bắt buộc trải qua bước kiểm chứng ngữ nghĩa ngầm** (Shadow Mode 5–10% lưu lượng hoặc đo Cosine Similarity embedding trên tập mẫu $N \ge 1.000$ câu để xác nhận tỷ lệ lặp ngữ nghĩa cũng $< 1\%$). Khi đó mới chính thức **Ký duyệt (Sign-off) Nghiệm thu 100% Production-Ready mà KHÔNG cần Semantic Cache**. Tiết kiệm bộ nhớ RAM, CPU và giảm chi phí vận hành (Pragmatic Engineering).
 
 ---
 
@@ -249,7 +255,7 @@ Lớp 7 là đỉnh cao của kiến trúc tối ưu hóa hiệu năng, giảm t
 
 ## 9. BƯỚC TIẾP THEO ĐỂ ĐẠT 100% PRODUCTION-READY
 
-Sau khi hoàn thành xuất sắc 7 lớp trên (**104/104 Tests PASS — 75% Code-Complete + Telemetry-Validated**):
+Sau khi hoàn thành xuất sắc 7 lớp trên (**104/104 Tests PASS — 75% Code-Complete, Telemetry Instrumented**):
 1. **Lớp 7 (Vận hành & Thu thập Telemetry Thực tế):**
    * Theo dõi chỉ số `ai.cache.exact_repeat_hits`, `ai.cache.exact_repeat_24h_hits` và `ai.latency.fastpath` trên Prometheus/Grafana với mẫu $N \ge 5.000$ lượt để ra quyết định ký duyệt hoặc triển khai Vector Cache.
 2. **Lớp 8 (Observability & CI/CD Evals):**

@@ -1,26 +1,26 @@
 # 📐 BẢN ĐẶC TẢ THIẾT KẾ KỸ THUẬT: LỚP 7 (CACHE & MODEL ROUTER)
 > **Dự án:** `identity-service-main` (Spring Boot 3 + Google Gemini) & Android Client App  
 > **Chuyên đề:** Kiến trúc tối ưu hóa độ trễ, chi phí token và định tuyến mô hình  
-> **Trạng thái:** 🚀 *Tài liệu đặc tả kỹ thuật hoàn thiện (Hiệu chuẩn lần 16 — Nghiệm thu Giai đoạn 1 & Giai đoạn 2 đạt 75% Code-Complete + Telemetry-Validated, 104/104 Unit & Integration tests passed 100%, đồng bộ nguyên xi Two-Tier FastPathEngine kèm unaccented fallback, loại trừ HTTP 400 Safety khỏi Breaker, watchdog trên aiStreamingExecutor, regex (?U) xử lý bẫy "nhạc Anh", Persona Isolation và đo lường 2 cửa sổ 30m & 24h trong Telemetry, Khung Quyết Định Dựa Trên Dữ Liệu 3 nhánh tiến tới 100% Production-Ready)*
+> **Trạng thái:** 🚀 *Tài liệu đặc tả kỹ thuật hoàn thiện (Hiệu chuẩn lần 16 — Nghiệm thu Giai đoạn 1 & Giai đoạn 2 đạt 75% Code-Complete, Telemetry Instrumented, 104/104 Unit & Integration tests passed 100%, đồng bộ nguyên xi Two-Tier FastPathEngine kèm unaccented fallback, loại trừ HTTP 400 Safety khỏi Breaker, watchdog trên aiStreamingExecutor, regex (?U) xử lý bẫy "nhạc Anh" có chủ ý, Persona Isolation và đo lường 2 cửa sổ 30m & 24h trong Telemetry, Khung Quyết Định Dựa Trên Dữ Liệu 3 nhánh tiến tới 100% Production-Ready)*
 
 ---
 
 ## 📑 MỤC LỤC
-1. [Đánh Giá Hiện Trạng & Phân Rã Điểm Số Chuẩn Xác (75% Code-Complete)](#1-đánh-giá-hiện-trạng--phân-rã-điểm-số-chuẩn-xác-75-code-complete)
+1. [Đánh Giá Hiện Trạng & Phân Rã Điểm Số Chuẩn Xác (75% Code-Complete, Telemetry Instrumented)](#1-đánh-giá-hiện-trạng--phân-rã-điểm-số-chuẩn-xác-75-code-complete-telemetry-instrumented)
 2. [Sơ Đồ Luồng Xử Lý Chuẩn (Execution Pipeline)](#2-sơ-đồ-luồng-xử-lý-chuẩn-execution-pipeline)
 3. [Module 1: Thiết Kế Fast-Path Engine & Đồng Bộ Hậu Giai Đoạn 1 [ĐÃ HOÀN THÀNH 100%]](#3-module-1-thiết-kế-fast-path-engine--đồng-bộ-hậu-giai-đoạn-1-đã-hoàn-thành-100)
-   - [3.1. Phân biệt lệnh Player, Ngữ cảnh Turn 1 và Phản hồi trung tính cho `NEXT`](#31-phân-biệt-lệnh-player-ngữ-cảnh-turn-1-và-phản-hồi-trung-tính-cho-next)
+   - [3.1. Phân biệt lệnh Player, Ngữ cảnh Turn 1, Chuẩn hóa Persona & Phản hồi trung tính cho `NEXT`](#31-phân-biệt-lệnh-player-ngữ-cảnh-turn-1-chuẩn-hóa-persona--phản-hồi-trung-tính-cho-next)
    - [3.2. Đàm phán Khả năng Client & Đồng bộ Android Client](#32-đàm-phán-khả-năng-client--đồng-bộ-android-client)
-   - [3.3. Tách biệt Luồng Cleanup, Bẫy JPA Auditing, Migration DATETIME(6) & Tính Đối Ngẫu Tie-Breaker](#33-tách-biệt-luồng-cleanup-bẫy-jpa-auditing-migration-datetime6--tính-đối-ngẫu-tie-breaker)
-   - [3.4. Mã nguồn chuẩn xác Two-Tier `FastPathResult` & `FastPathEngine`](#34-mã-nguồn-chuẩn-xác-two-tier-fastpathresult--fastpathengine)
+   - [3.3. Tách biệt Luồng Cleanup, Bẫy JPA Auditing, Migration DATETIME(6) & Tính Đối Ngẫu Tie-Breaker theo Sender String](#33-tách-biệt-luồng-cleanup-bẫy-jpa-auditing-migration-datetime6--tính-đối-ngẫu-tie-breaker-theo-sender-string)
+   - [3.4. Mã nguồn chuẩn xác Two-Tier `FastPathResult` & `FastPathEngine`, Phân tích bề mặt khớp và Phòng thủ phủ định](#34-mã-nguồn-chuẩn-xác-two-tier-fastpathresult--fastpathengine-phân-tích-bề-mặt-khớp-và-phòng-thủ-phủ-định)
 4. [Module 2: Thiết Kế Model Router & Resilience4j Circuit Breaker [ĐÃ HOÀN THÀNH 100%]](#4-module-2-thiết-kế-model-router--resilience4j-circuit-breaker-đã-hoàn-thành-100)
    - [4.1. Dependency, Phân cấp `UpstreamAiException` & Cấu hình Breaker `geminiCriticRouter` (Loại trừ 400/403)](#41-dependency-phân-cấp-upstreamaiexception--cấu-hình-breaker-geminicriticrouter-loại-trừ-400403)
    - [4.2. Điều kiện phân làn, Tách cờ `degradedByBreaker` & Đối tượng `RoutingDecision`](#42-điều-kiện-phân-làn-tách-cờ-degradedbybreaker--đối-tượng-routingdecision)
-   - [4.3. Vòng đời Permit, First-Token Watchdog 8000ms & Tinh chỉnh Fallback Guard (Read-only vs Side-effect)](#43-vòng-đời-permit-first-token-watchdog-8000ms--tinh-chỉnh-fallback-guard-read-only-vs-side-effect)
+   - [4.3. Vòng đời Permit, First-Token Watchdog 8000ms (Phân biệt Socket 15s vs 90s, Safety 200 vs 400) & Tinh chỉnh Fallback Guard](#43-vòng-đời-permit-first-token-watchdog-8000ms-phân-biệt-socket-15s-vs-90s-safety-200-vs-400--tinh-chỉnh-fallback-guard)
 5. [Module 3: CanCacheEvaluator, Telemetry Service & Khung Quyết Định Dữ Liệu [HOÀN TẤT KỸ THUẬT]](#5-module-3-cancacheevaluator-telemetry-service--khung-quyết-định-dữ-liệu-hoàn-tất-kỹ-thuật)
-   - [5.1. Mã nguồn hoàn chỉnh `CanCacheEvaluator`: Cờ `(?U)` & Loại bỏ bẫy "Nhạc Anh" (8 Lý do Bypass)](#51-mã-nguồn-hoàn-chỉnh-cancacheevaluator-cờ-u--loại-bỏ-bẫy-nhạc-anh-8-lý-do-bypass)
+   - [5.1. Mã nguồn hoàn chỉnh `CanCacheEvaluator`: Cờ `(?U)` & Giảm thiểu False-Positive (Over-Bypass có chủ ý, 8 Lý do Bypass)](#51-mã-nguồn-hoàn-chỉnh-cancacheevaluator-cờ-u--giảm-thiểu-false-positive-over-bypass-có-chủ-ý-8-lý-do-bypass)
    - [5.2. Telemetry First: Mã nguồn `TelemetryService` (Caffeine 50k, 30m & 24h, Cô lập Persona & User ẩn danh)](#52-telemetry-first-mã-nguồn-telemetryservice-caffeine-50k-30m--24h-cô-lập-persona--user-ẩn-danh)
-   - [5.3. Khung Quyết Định Kiến Trúc Dựa Trên Dữ Liệu 3 Nhánh (Tiêu Chuẩn Hoàn Tất 100% Production-Ready)](#53-khung-quyết-định-kiến-trúc-dựa-trên-dữ-liệu-3-nhánh-tiêu-chuẩn-hoàn-tất-100-production-ready)
+   - [5.3. Khung Quyết Định Kiến Trúc Dựa Trên Dữ Liệu 3 Nhánh & Bản chất Tỷ lệ Lặp](#53-khung-quyết-định-kiến-trúc-dựa-trên-dữ-liệu-3-nhánh--bản-chất-tỷ-lệ-lặp)
    - [5.4. Đặc tả Tương lai: Hệ Thống 5 Cổng So Khớp & Event-Driven Invalidation](#54-đặc-tả-tương-lai-hệ-thống-5-cổng-so-khớp--event-driven-invalidation)
 6. [Module 4: Tích Hợp Controller & Orchestrator](#6-module-4-tích-hợp-controller--orchestrator)
    - [6.1. Triển khai `AiChatController` & Hàm `handleFastPathExecution`](#61-triển-khai-aichatcontroller--hàm-handlefastpathexecution)
@@ -34,7 +34,7 @@
 
 ---
 
-## 1. ĐÁNH GIÁ HIỆN TRẠNG & PHÂN RÃ ĐIỂM SỐ CHUẨN XÁC (75% CODE-COMPLETE)
+## 1. ĐÁNH GIÁ HIỆN TRẠNG & PHÂN RÃ ĐIỂM SỐ CHUẨN XÁC (75% CODE-COMPLETE, TELEMETRY INSTRUMENTED)
 
 Tiến độ hoàn thiện của Lớp 7 được theo dõi dựa trên 4 thành phần kỹ thuật độc lập (mỗi thành phần chiếm trọng số 25%):
 
@@ -44,7 +44,7 @@ Tiến độ hoàn thiện của Lớp 7 được theo dõi dựa trên 4 thành
 | **Fast-Path Command Engine** | 25% | **+25% (Lũy kế 50%)** | **ĐÃ HOÀN THÀNH & NGHIỆM THU (62 tests):** Regex Two-Tier có/không dấu, unaccented fallback, "bài tiếp theo", chạy trước Session Lock, đồng bộ Android Client, `DATETIME(6)` microsecond precision, `@Transactional saveFastPathMessages`, Dual Tie-Breaker |
 | **Dynamic Model Router & Fallback** | 25% | **+25% (Lũy kế 75%)** | **ĐÃ HOÀN THÀNH & NGHIỆM THU (17 tests):** `ModelRouterService`, Resilience4j `geminiCriticRouter` (loại trừ lỗi 400/403 safety khỏi Breaker), watchdog 8000ms trên `aiStreamingExecutor`, phân cấp `UpstreamAiException`, fallback an toàn phân biệt read-only vs side-effect |
 | **Telemetry & Data-Driven Decision** | 25% | **Hạ tầng hoàn tất (25 tests)<br/>Đang thu thập số liệu** | **ĐÃ TRIỂN KHAI HOÀN TẤT & TEST (25 tests):** `CanCacheEvaluator` (8 cổng bypass, regex `(?U)`, xử lý tránh bắt nhầm "nhạc Anh"), `TelemetryService` (Caffeine 50k, cửa sổ 30m & 24h, cô lập `persona:canonical`, tách riêng anonymous prompts), `VietnameseTextNormalizer.stripDiacritics`. **100% Production-Ready** sẽ được ký duyệt sau khi hoàn tất đo đạc thực tế |
-| **TỔNG CỘNG** | **100%** | **75% Code-Complete + Telemetry-Validated** | **104/104 Unit & Integration Tests Passed (100% Pass Rate). Sẵn sàng giai đoạn đo lường thực tế.** |
+| **TỔNG CỘNG** | **100%** | **75% Code-Complete, Telemetry Instrumented** | **104/104 Unit & Integration Tests Passed (100% Pass Rate). Sẵn sàng giai đoạn đo lường thực tế.** |
 
 ---
 
@@ -73,10 +73,10 @@ flowchart TD
     
     Step6 --> Step7["Bước 7: Multi-Step Agent Execution Loop<br/>- Quản lý Permit tại executeAgentLoop (chống double-release)<br/>- First-Token Watchdog 8000ms trên aiStreamingExecutor<br/>- Fallback an toàn: Cho phép khi read-only tools, chặn khi side-effect tools"]
     
-    Step7 --> Step8{"Bước 8: Kiểm Tra & Lưu Cache Hậu Kỳ [Dự kiến - Chưa kích hoạt]<br/>- evalResult.scope() == GENERAL?<br/>- precomputedEmbedding != null?<br/>- !usedPersonalTool?<br/>- !hasPriorHistory?<br/>- !wasFallbackTriggered?<br/>- !degradedByBreaker?<br/>- playerAction == null?<br/>- playlistProposal == null?<br/>- currentSongId == null?"}
+    Step7 --> Step8{"Bước 8: Kiểm Tra & Lưu Cache Hậu Kỳ [Dự kiến - Chưa kích hoạt]<br/>- evalResult.scope() == GENERAL?<br/>- precomputedEmbedding != null?<br/>- !usedPersonalTool?<br/>- !usedTool('get_top_trending_songs')?<br/>- !hasPriorHistory?<br/>- !wasFallbackTriggered?<br/>- !degradedByBreaker?<br/>- playerAction == null?<br/>- playlistProposal == null?<br/>- currentSongId == null?"}
     
     Step8 -- "Đủ điều kiện" --> SaveCache["💾 Lưu vào Semantic Cache (W-TinyLFU)"]
-    Step8 -- "Không đủ điều kiện" --> SkipCache["Bỏ qua lưu Cache"]
+    Step8 -- "Không đủ điều kiện" --> SkipCache["Bỏ qua lưu Cache (dữ liệu cá nhân, lỗi thời hoặc side-effect)"]
     
     SaveCache --> StreamOut["📱 Stream SSE phản hồi về Client & Mở khóa Session"]
     SkipCache --> StreamOut
@@ -103,6 +103,9 @@ flowchart TD
      ```java
      "Đã gửi lệnh chuyển bài."
      ```
+5. **Chuẩn hóa Danh xưng & Tên Enum Persona (`AiPersona.HEALING_FRIEND`):**
+   * Hệ thống thống nhất toàn diện enum `com.devteria.identityservice.enums.AiPersona` với 3 giá trị: `GENZ_DJ`, `MUSIC_CRITIC`, `HEALING_FRIEND` (thay thế dứt điểm tên nháp cũ `HEALING_BUDDY` để khớp 100% với mã nguồn Java).
+   * Văn phong câu chào Turn 1 và câu giới thiệu danh tính được tinh chỉnh sắc thái: `MUSIC_CRITIC` dùng ngôi xưng *"Kính chào quý thính giả..."* (học thuật, trang trọng), `HEALING_FRIEND` dùng *"Chào bạn, mình luôn ở đây để lắng nghe..."* (ấm áp, vỗ về).
 
 ---
 
@@ -166,17 +169,19 @@ flowchart TD
          chatMessageRepository.save(aiMessage);
      }
      ```
-5. **Tính Đối Ngẫu Tie-Breaker cho Thứ Tự Tin Nhắn:**
-   * Do UUIDv4 không có tính thứ tự thời gian, việc sử dụng `id` làm tie-breaker có thể đảo ngược thứ tự tin nhắn.
-   * Giải pháp dùng `sender` làm tie-breaker tự nhiên: Trong enum `MessageSender`, `USER` có ordinal lớn hơn `AI` (USER=1, AI=0) hoặc xét theo thứ tự chữ cái ('U' > 'A'):
-     * **Truy vấn xuôi (ASC - Hiển thị UI):** `ORDER BY m.createdAt ASC, m.sender DESC` (USER đứng trước AI).
-     * **Truy vấn ngược (DESC - Sliding Window):** `ORDER BY m.createdAt DESC, m.sender ASC` (AI đứng trước USER, để sau khi `Collections.reverse()` thì USER luôn đứng trước AI).
+5. **Tính Đối Ngẫu Tie-Breaker cho Thứ Tự Tin Nhắn (Chuẩn hóa Lexicographical theo String `sender`):**
+   * Do UUIDv4 không có tính thứ tự thời gian, việc sử dụng `id` làm tie-breaker có thể làm xáo trộn thứ tự tin nhắn.
+   * `ChatMessage` sử dụng `@Enumerated(EnumType.STRING)` trên cột `sender VARCHAR(16)`, lưu trực tiếp chuỗi ký tự `'USER'` và `'AI'`.
+   * SQL Engine (MySQL) sắp xếp cột chuỗi theo **Thứ tự Bảng chữ cái (Lexicographical / Alphabetical order)** trong bảng mã ASCII/Unicode:
+     - Ký tự `'U'` (ASCII 85) đứng sau ký tự `'A'` (ASCII 65), nghĩa là trong SQL: `'USER' > 'AI'`.
+     - **Truy vấn xuôi (ASC - Hiển thị UI ban đầu):** `ORDER BY m.createdAt ASC, m.sender DESC` $\rightarrow$ Khi hai tin nhắn có cùng microsecond, `'USER'` ('U') sẽ được xếp TRƯỚC `'AI'` ('A').
+     - **Truy vấn ngược (DESC - Lấy Sliding Window History):** `ORDER BY m.createdAt DESC, m.sender ASC` $\rightarrow$ Khi hai tin nhắn có cùng microsecond, `'AI'` ('A') xếp trước `'USER'` ('U'). Khi tầng ứng dụng gọi `Collections.reverse(list)`, thứ tự được đảo ngược hoàn hảo: `USER` luôn đứng trước `AI`.
 
 ---
 
 ### 3.4. Mã nguồn chuẩn xác Two-Tier `FastPathResult` & `FastPathEngine`
 
-Đây là mã nguồn thực tế đang chạy và được kiểm thử thành công trong [`FastPathEngine.java`](file:///D:/SpringBoot/identity-service-main/identity-service-main/src/main/java/com/devteria/identityservice/service/FastPathEngine.java):
+Đây là mã nguồn thực tế đang chạy và được kiểm thử thành công trong `FastPathEngine.java`:
 
 ```java
 package com.devteria.identityservice.service;
@@ -324,10 +329,34 @@ public final class FastPathEngine {
             case MUSIC_CRITIC -> "Tôi là Chuyên gia Phê bình Âm nhạc (Music Critic). Tôi đồng hành cùng quý vị để phân tích cấu trúc, hòa âm và giá trị nghệ thuật tác phẩm.";
             case HEALING_FRIEND -> "Mình là Người bạn Chữa lành (Healing Friend). Mình ở đây để lắng nghe tâm sự và xoa dịu tâm hồn bạn bằng những giai điệu bình yên.";
         };
-        };
     }
 }
 ```
+
+---
+
+### 3.5. Phân Tích Bề Mặt Khớp Của Tier 2 & Chiến Lược Phòng Thủ Phủ Định Không Dấu
+
+Việc bổ sung cơ chế fallback không dấu cho chuỗi có dấu (`hasDiacritics == true`) giúp người dùng gõ lỗi dấu (ví dụ *"tạm dung"*, *"bài tiep theo"*) vẫn kích hoạt Fast-Path mượt mà. Tuy nhiên, việc mở rộng bề mặt so khớp này phát sinh 2 rủi ro logic cần kiểm soát:
+
+1. **Nguy cơ khớp nhầm từ khác nghĩa cùng dạng không dấu:**
+   * Khi một từ có dấu bị bỏ dấu, nó có thể trùng với một lệnh không dấu ngắn (ví dụ: *"tắt"* $\rightarrow$ *"tat"*, *"dừng"* $\rightarrow$ *"dung"*).
+   * **Biện pháp kiểm soát hiện tại:** Các mẫu regex Tier 2 đã được neo chặt bởi ký tự đầu `^` và cuối `$`, đồng thời nhóm từ đệm cố định (ví dụ `tam dung(?: nhac)?`, `tat(?: nhac)?`). Một câu chứa từ ngẫu nhiên như *"tất cả"* hay *"tật xấu"* khi bỏ dấu thành *"tat ca"*, *"tat xau"* sẽ **KHÔNG KHỚP** vì không khớp cấu trúc neo.
+2. **Lỗ hổng câu phủ định gõ không dấu (`dung tat nhac`, `ko dung lai`):**
+   * Bước 2 hiện tại chỉ kiểm tra các từ phủ định có dấu: `"đừng"`, `"không"`, `"chớ"`.
+   * Một người dùng gõ không dấu: `"dung tat nhac"` (đừng tắt nhạc), `"ko dung lai"` (không dừng lại), hoặc `"cho tat"` (chớ tắt) sẽ vượt qua Bước 2 vì chưa có bộ lọc phủ định không dấu.
+   * Khi chuỗi này đi tiếp xuống Tier 2, nếu regex không dấu có chứa nhánh lỏng lẻo, nguy cơ lệnh dừng bị kích hoạt ngược ý muốn người dùng là hoàn toàn có thể xảy ra.
+3. **Đề xuất Kiến Trúc Phòng Thủ Chiều Sâu (Cho Đợt Refactor Tiếp Theo):**
+   * Bổ sung kiểm tra chuỗi `lowerUnaccented` ngay tại Bước 2 để triệt tiêu mọi biến thể phủ định không dấu:
+     ```java
+     // Chặn triệt để phủ định không dấu trước khi thử khớp bất kỳ lệnh nào
+     String lowerUnaccented = VietnameseTextNormalizer.stripDiacritics(lowerRaw);
+     if (lowerUnaccented.startsWith("dung ") || lowerUnaccented.startsWith("khong ") || lowerUnaccented.startsWith("ko ") || lowerUnaccented.startsWith("cho ")
+             || lowerUnaccented.contains(" dung ") || lowerUnaccented.contains(" khong ") || lowerUnaccented.contains(" ko ") || lowerUnaccented.contains(" cho ")) {
+         return Optional.empty();
+     }
+     ```
+   * Bổ sung bộ test ca biên cho các cặp từ khác nghĩa cùng dạng không dấu và các câu phủ định không dấu để bảo đảm FastPathEngine chỉ bắt đúng ý định điều khiển player.
 
 ---
 
@@ -404,13 +433,24 @@ public enum ModelTier {
 
 ### 4.3. Vòng đời Permit, First-Token Watchdog 8000ms & Tinh chỉnh Fallback Guard (Read-only vs Side-effect)
 
-1. **Vòng đời Permit:**
+1. **Vòng đời Permit & Quản lý Tài nguyên Semaphore:**
    * Trước khi gọi model Reasoning Tier, lấy permit qua `circuitBreaker.tryAcquirePermission()`. Nếu thất bại (Breaker OPEN), lập tức hạ cấp sang Flash và gán `degradedByBreaker = true`.
    * Sử dụng cờ `AtomicBoolean resultRecorded = new AtomicBoolean(false)` trong khối `finally` để đảm bảo permit được giải phóng (`releasePermission()`) hoặc ghi nhận lỗi (`onError()`) duy nhất một lần.
-2. **First-Token Watchdog 8000ms:**
-   * Thực hiện gọi model thông qua `CompletableFuture.supplyAsync(...)` với `get(8000, TimeUnit.MILLISECONDS)`.
-   * *Lưu ý về Socket Cancellation:* Trong Java HTTP client, việc `future.cancel(true)` ngắt thread nhưng không thể đóng socket đang đọc dữ liệu trừ khi RestClient có cấu hình timeout socket (`read-timeout-ms: 15000`). Vì vậy, hệ thống kết hợp watchdog với socket timeout để giải phóng tài nguyên triệt để.
-3. **Tinh chỉnh Fallback Guard An Toàn:**
+2. **First-Token Watchdog 8000ms & Phân Định Socket Timeout (15s vs 90s):**
+   * Watchdog thực thi qua `CompletableFuture.supplyAsync(..., aiStreamingExecutor)` trên Virtual Threads với `get(8000, TimeUnit.MILLISECONDS)`.
+   * **Phân định Client Timeout:**
+     - Trong `GeminiConfig.java`, `geminiRestClient` có Read Timeout = 15.000ms (15s), trong khi `geminiStreamRestClient` có Read Timeout = 90.000ms (90s).
+     - Phương thức `callWithWatchdog` **BẮT BUỘC gọi qua `geminiRestClient` (15s)**. Khi Watchdog ném `FirstTokenTimeoutException` ở mốc 8.000ms và gọi `future.cancel(true)`, kết nối HTTP bên dưới chỉ có thể chạy ngầm tối đa thêm **7 giây** (15s - 8s) trước khi socket tự đóng, **TUYỆT ĐỐI KHÔNG DÙNG `geminiStreamRestClient` (90s)** để tránh rủi ro request bị bỏ rơi chạy nền suốt 90s, gây lãng phí quota token và nghẽn tài nguyên.
+     - *Khuyến nghị tối ưu tiếp theo:* Tạo một RestClient chuyên biệt cho Critic Router với `readTimeout = 10000ms` (10s) để thu hẹp khoảng cách trễ socket còn đúng 2s sau Watchdog.
+3. **Xử Lý Safety Blocks (HTTP 200 vs HTTP 400) & Thiết Lập Alert Giám Sát Độc Lập:**
+   * **Safety Block dạng HTTP 400:** Đã được đưa vào `ignore-exceptions` của Breaker để bảo vệ Circuit Breaker không bị nhảy OPEN oan uổng khi người dùng gửi prompt độc hại.
+   * **Safety Block dạng HTTP 200 (In-Stream Block):** Gemini có thể trả về HTTP 200 nhưng payload chứa `promptFeedback.blockReason` hoặc `candidates[0].finishReason == "SAFETY"`. Ở tầng mạng, Circuit Breaker ghi nhận đây là lượt gọi thành công (HTTP 200 OK) nên không tăng tỷ lệ lỗi hạ tầng — đây là hành vi thiết kế chuẩn mực.
+   * **Giám sát cảnh báo độc lập (Prometheus Alerting):** Để không bỏ sót các cuộc tấn công Prompt Injection hàng loạt hoặc vi phạm API key, hệ thống thiết lập cảnh báo Prometheus riêng biệt:
+     ```promql
+     # Cảnh báo Safety Blocks hoặc lỗi Client tăng đột biến (không ảnh hưởng Breaker)
+     sum(rate(ai_gemini_client_errors_total{status=~"400|403"}[5m])) > 5
+     ```
+4. **Tinh chỉnh Fallback Guard An Toàn:**
    * Các tool chỉ đọc (`search_music_library`, `get_top_trending_songs`, `get_user_recommendations`): Khi xảy ra lỗi trên Pro, **CHO PHÉP fallback sang Flash** để tổng hợp câu trả lời từ dữ liệu đã lấy.
    * Các tool có tác dụng phụ làm thay đổi trạng thái (`trigger_player_action`, `propose_ai_playlist`): **CHẶN ĐỨNG fallback tuyệt đối**, dừng an toàn và trả lỗi `AI_SERVER_BUSY` để chống lỗi Double Mutation (thực thi lệnh 2 lần).
 
@@ -418,13 +458,16 @@ public enum ModelTier {
 
 ## 5. MODULE 3: CANCHEEVALUATOR, TELEMETRY SERVICE & KHUNG QUYẾT ĐỊNH DỮ LIỆU [HOÀN TẤT KỸ THUẬT]
 
-### 5.1. Mã nguồn hoàn chỉnh `CanCacheEvaluator`: Cờ `(?U)` & Loại bỏ bẫy "Nhạc Anh" (8 Lý do Bypass)
+### 5.1. Mã nguồn hoàn chỉnh `CanCacheEvaluator`: Cờ `(?U)` & Giảm Thiểu False-Positive (Over-Bypass Có Chủ Ý, 8 Lý do Bypass)
+
+Việc cập nhật pattern dữ liệu cá nhân sang `nhạc của (?:tôi|mình|em|anh)` giúp loại trừ triệt để việc bắt nhầm cụm danh từ *"nhạc Anh"* (nhạc nước Anh / UK music) thành sở thích cá nhân. Mặc dù câu chứa đại từ như *"nhạc của anh"* vẫn bị bypass, đây là **cơ chế Over-Bypass có chủ ý (Conservative Defense)**: Trong giao tiếp tiếng Việt, *"anh"* là đại từ nhân xưng rất phổ biến; việc đẩy câu hỏi cho LLM trả lời động luôn an toàn hơn việc lưu vào Cache dùng chung làm rò rỉ dữ liệu cá nhân.
 
 ```java
 package com.devteria.identityservice.service;
 
 import com.devteria.identityservice.enums.CacheBypassReason;
 import com.devteria.identityservice.enums.CacheScope;
+import com.devteria.identityservice.util.VietnameseTextNormalizer;
 import org.springframework.stereotype.Component;
 
 import java.text.Normalizer;
@@ -499,7 +542,7 @@ public class CanCacheEvaluator {
         String nfc = Normalizer.normalize(rawPrompt.trim(), Normalizer.Form.NFC);
         String singleSpaced = nfc.replaceAll("\\s+", " ");
         String lowerAccented = TRAILING_PUNCTUATION.matcher(singleSpaced.toLowerCase(Locale.ROOT)).replaceAll("").trim();
-        String lowerUnaccented = stripDiacritics(lowerAccented);
+        String lowerUnaccented = VietnameseTextNormalizer.stripDiacritics(lowerAccented);
 
         if (PHONE_PATTERN.matcher(lowerAccented).find()
                 || EMAIL_PATTERN.matcher(lowerAccented).find()
@@ -528,10 +571,6 @@ public class CanCacheEvaluator {
         }
 
         return CacheEvaluationResult.general();
-    }
-
-    public static String stripDiacritics(String input) {
-        return VietnameseTextNormalizer.stripDiacritics(input);
     }
 }
 ```
@@ -685,7 +724,7 @@ public class TelemetryService {
 
 ---
 
-### 5.3. Khung Quyết Định Kiến Trúc Dựa Trên Dữ Liệu 3 Nhánh (Tiêu Chuẩn Hoàn Tất 100% Production-Ready)
+### 5.3. Khung Quyết Định Kiến Trúc Dựa Trên Dữ Liệu 3 Nhánh & Bản Chất Tỷ Lệ Lặp
 
 Để tránh bẫy "ngụy biện năng lực" (chưa thể tuyên bố 100% Production-Ready khi hệ thống chưa chạy thực tế với dữ liệu người dùng thật và chưa kiểm thử tải), Giai đoạn 3 áp dụng phương pháp thống kê khoa học:
 
@@ -695,9 +734,20 @@ public class TelemetryService {
    - Tích hợp `AiPersona` vào khóa băm SHA-256 (`persona:canonical`) nhằm đảm bảo dữ liệu đo lường không bị thổi phồng bởi các câu hỏi giống nhau ở các persona khác nhau.
    - Cô lập người dùng ẩn danh bằng metric `ai.cache.anonymous_prompts`, loại trừ khỏi mẫu tính tỷ lệ lặp lại liên người dùng để số liệu phản ánh chính xác 100%.
 
-$$\text{Tỷ lệ lặp liên người dùng (24h)} = \frac{\text{ai.cache.exact\_repeat\_24h\_hits}}{\text{ai.cache.semantic.eligibility(eligible=true)} - \text{ai.cache.anonymous\_prompts}} \times 100\%$$
+2. **Công thức Đo lường & Định nghĩa Bản chất Metric:**
+   $$\text{Tỷ lệ Prompt Lặp lại (Repeat Ratio - 24h)} = \frac{\text{ai.cache.exact\_repeat\_24h\_hits}}{\text{ai.cache.semantic.eligibility(eligible=true)} - \text{ai.cache.anonymous\_prompts}} \times 100\%$$
 
-$$\text{Tỷ lệ lặp liên người dùng (30m)} = \frac{\text{ai.cache.exact\_repeat\_hits}}{\text{ai.cache.semantic.eligibility(eligible=true)} - \text{ai.cache.anonymous\_prompts}} \times 100\%$$
+   $$\text{Tỷ lệ Prompt Lặp lại (Repeat Ratio - 30m)} = \frac{\text{ai.cache.exact\_repeat\_hits}}{\text{ai.cache.semantic.eligibility(eligible=true)} - \text{ai.cache.anonymous\_prompts}} \times 100\%$$
+
+   > [!NOTE]
+   > **Phân biệt ý nghĩa trên Dashboard:**
+   > - Lần đầu tiên một câu hỏi xuất hiện ($k=1$), đó là câu hỏi mới (New Prompt / Cache MISS). Chỉ từ lần xuất hiện thứ hai trở đi ($k \ge 2$), mỗi lượt xuất hiện mới được tính là một hit lặp lại (`exact_repeat_hits++`).
+   > - Do đó, công thức trên phản ánh **"Tỷ lệ prompt đến hệ thống là bản sao lặp lại"**, tương đương với **"Potential Cache Hit Rate" (Tỷ lệ Cache Hit tiềm năng có thể đạt được)** nếu có cache. Nó KHÔNG phải là hit rate của một cache đang vận hành thực tế.
+
+3. **Bản chất Cận Dưới (Lower Bound) & Điều Kiện Ràng Buộc Cho Nhánh 3:**
+   - Exact-Repeat Telemetry chỉ bắt các câu hỏi trùng khớp từng chữ sau khi chuẩn hóa canonical. Semantic Cache thật sự có thể bắt được các câu diễn đạt khác nhau (Paraphrasing, e.g. *"gợi ý nhạc buồn"* vs *"tìm bài hát tâm trạng đêm mưa"*).
+   - Vì vậy, con số đo từ Exact Match 24h là **Cận Dưới Tuyệt Đối (Strict Lower Bound)** của tiềm năng Semantic Cache.
+   - **Quy tắc nghiêm ngặt cho Nhánh 3 (`< 1%`):** **KHÔNG ĐƯỢC VỘI VÃ KÝ DUYỆT BỎ CACHE** chỉ dựa trên con số Exact-Repeat. Hệ thống bắt buộc phải trải qua bước kiểm chứng ngữ nghĩa: Chạy **Shadow Mode trên 5–10% lưu lượng** hoặc tính toán khoảng cách cosine trên embedding ngầm của một tập mẫu ngẫu nhiên. Chỉ khi tỷ lệ tương đồng ngữ nghĩa ($\cos \ge 0.92$) cũng đo được $< 1\%$ thì mới chính thức ký duyệt loại bỏ Semantic Cache để tiết kiệm RAM/CPU.
 
 ```mermaid
 graph TD
@@ -707,7 +757,10 @@ graph TD
     
     Evaluate -- "1% - 3% (Vùng giao thoa)" --> ShadowMode["🔬 Kích hoạt SHADOW MODE (10% Traffic trong 7 ngày)<br/>Đo lường độ trễ & Tiết kiệm token thực tế<br/>trước khi cấp phát RAM cho Vector DB"]
     
-    Evaluate -- "< 1% hoặc Lưu lượng tổng quát thấp" --> SignOff["🏆 Ký Duyệt Nghiệm Thu 100% Production-Ready<br/>KHÔNG CẦN Semantic Cache (Pragmatic Architecture)<br/>Tiết kiệm RAM & CPU, bảo toàn hiệu năng tối ưu"]
+    Evaluate -- "< 1% (Cận dưới thấp)" --> SemanticVerify{"🔬 Kiểm Chứng Ngữ Nghĩa Ngầm<br/>(Shadow Mode hoặc Embedding Cosine Similarity tập mẫu)"}
+    
+    SemanticVerify -- "Semantic Repeat >= 1%" --> ShadowMode
+    SemanticVerify -- "Semantic Repeat < 1%" --> SignOff["🏆 Ký Duyệt Nghiệm Thu 100% Production-Ready<br/>KHÔNG CẦN Semantic Cache (Pragmatic Architecture)<br/>Tiết kiệm RAM & CPU, bảo toàn hiệu năng tối ưu"]
 ```
 
 ---
@@ -966,12 +1019,16 @@ GIAI ĐOẠN 3: Bước Đệm Telemetry & Khung Quyết Định Dữ Liệu [�
 ## 9. NHẬT KÝ THAY ĐỔI (CHANGELOG)
 
 * **Hiệu chuẩn lần 16 (Hiện tại):**
-  - Đồng bộ Two-Tier FastPathEngine: Thêm "bài tiếp theo" / "bai tiep theo", đổi RESUME thành "Đã tiếp tục phát nhạc.", fallback unaccented cho câu gõ lẫn lộn dấu.
-  - Tách tiện ích dùng chung `VietnameseTextNormalizer.stripDiacritics(String input)`.
-  - Cập nhật `TelemetryService`: Đo lường 2 cửa sổ (30m & 24h), tích hợp `persona:canonical` vào SHA-256, gắn nhãn riêng cho `ai.cache.anonymous_prompts`.
-  - Watchdog 8000ms thực thi trên `aiStreamingExecutor` (Virtual Threads).
-  - Khung Quyết Định Dựa Trên Dữ Liệu chuẩn hóa cỡ mẫu $N \ge 5.000$ (tối thiểu 3.000 lượt hợp lệ).
-  - Mở rộng bộ test lên **104/104 Unit & Integration Tests Passed (100% Pass Rate)**.
+  - **Sửa lỗi cú pháp & Chuẩn hóa Persona:** Xóa bỏ dấu `};` thừa trong `resolveIdentityResponse`. Thống nhất tên enum `AiPersona.HEALING_FRIEND` trên toàn hệ thống (thay thế nhãn `HEALING_BUDDY`).
+  - **Chuẩn hóa Văn phong Persona:** Cập nhật câu chào Turn 1 và giới thiệu danh tính cho `MUSIC_CRITIC` sang ngôi xưng trang trọng *"Kính chào quý thính giả..."* và `HEALING_FRIEND` sang *"Chào bạn, mình luôn ở đây để lắng nghe..."*.
+  - **Đồng bộ Two-Tier FastPathEngine & Phân tích bề mặt khớp:** Bổ sung `"bài tiếp theo"` / `"bai tiep theo"`, thống nhất câu trả lời RESUME *"Đã tiếp tục phát nhạc."*, thêm unaccented fallback. Phân tích nguy cơ câu phủ định không dấu (`dung tat nhac`) và đề xuất giải pháp phòng thủ ở Bước 2.
+  - **Tách tiện ích dùng chung `VietnameseTextNormalizer.stripDiacritics`:** Bỏ wrapper thừa trong `CanCacheEvaluator`, gọi trực tiếp tiện ích tĩnh.
+  - **Làm rõ Tie-Breaker theo String `sender`:** Xác định rõ `ChatMessage` dùng `@Enumerated(EnumType.STRING)` trên cột `VARCHAR(16)`, sắp xếp theo thứ tự bảng chữ cái Lexicographical (`'USER' > 'AI'`).
+  - **Phân định Socket Timeout (15s vs 90s) & Safety Blocks (HTTP 200 vs 400):** Chỉ định rõ Watchdog phải trỏ vào `geminiRestClient` (15s read timeout), tránh rủi ro treo socket 90s; thiết lập Prometheus Alert độc lập cho lỗi 400/403 và in-stream safety blocks (`finishReason=SAFETY`).
+  - **Chống Stale Data ở Bước 8:** Bổ sung điều kiện loại trừ `!usedTool("get_top_trending_songs")` khỏi bộ điều kiện lưu Semantic Cache.
+  - **Chuẩn hóa Bản chất Metric & Khung Quyết Định 3 Nhánh:** Làm rõ công thức mẫu số đo lường *"Tỷ lệ prompt là bản lặp (Repeat Ratio)"* trên Dashboard; bổ sung ràng buộc bắt buộc kiểm chứng qua Shadow Mode hoặc Semantic Similarity trước khi ký duyệt Nhánh 3 (`< 1%`).
+  - **Chuẩn hóa nhãn tiến độ:** Chuyển sang **`75% Code-Complete, Telemetry Instrumented`** phản ánh đúng hiện trạng kỹ thuật.
+  - **Kiểm thử tự động:** Mở rộng và nghiệm thu **104/104 Unit & Integration Tests Passed (100% Pass Rate)**.
 * **Hiệu chuẩn lần 15:**
   - Đồng bộ FastPathEngine Two-tier accented/unaccented, loại trừ HTTP 400 Safety block khỏi Breaker, cờ `(?U)` trong CanCacheEvaluator xử lý bẫy "nhạc Anh". Nghiệm thu 91/91 tests.
 * **Hiệu chuẩn lần 14:**
@@ -982,4 +1039,4 @@ GIAI ĐOẠN 3: Bước Đệm Telemetry & Khung Quyết Định Dữ Liệu [�
 ---
 
 > [!TIP]
-> **Tóm tắt trạng thái:** Lớp 7 đã hoàn thành **75% Code-Complete + Telemetry-Validated** với **104/104 Unit & Integration tests passed (100% Pass Rate)**. Bản thiết kế chi tiết đã giải quyết trọn vẹn toàn bộ các góc khuất thực thi: từ bẫy JPA Auditing, độ chính xác `DATETIME(6)`, tính đối ngẫu tie-breaker, cấu trúc ngoại lệ Resilience4j, cách ly Watchdog trên Virtual Threads, đến hạ tầng Telemetry 2 cửa sổ đo lường ngầm. Khung Quyết Định Dựa Trên Dữ Liệu 3 nhánh là chiếc chìa khóa đưa hệ thống cán đích 100% Production-Ready sau giai đoạn chạy thực tế.
+> **Tóm tắt trạng thái:** Lớp 7 đã hoàn thành **75% Code-Complete, Telemetry Instrumented** với **104/104 Unit & Integration tests passed (100% Pass Rate)**. Bản thiết kế chi tiết đã giải quyết trọn vẹn toàn bộ các góc khuất thực thi: từ bẫy JPA Auditing, độ chính xác `DATETIME(6)`, tính đối ngẫu tie-breaker theo bảng chữ cái string, cấu trúc ngoại lệ Resilience4j, cách ly Watchdog trên Virtual Threads, phân định socket timeout 15s vs 90s, đến hạ tầng Telemetry 2 cửa sổ đo lường ngầm. Khung Quyết Định Dựa Trên Dữ Liệu 3 nhánh kèm bước xác thực Semantic Similarity là chiếc chìa khóa đưa hệ thống cán đích 100% Production-Ready sau giai đoạn chạy thực tế.

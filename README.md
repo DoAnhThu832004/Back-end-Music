@@ -61,7 +61,7 @@ Backend RESTful API hoàn chỉnh cho nền tảng **Phát nhạc trực tuyến
 ### 🤖 Trợ Lý Âm Nhạc AI Đa Tầng (Agentic AI Music Companion - Google Gemini)
 - **Kiến trúc Phòng thủ 7 Lớp Chuyên sâu**:
   1. *Lớp 1 (Model + API)*: Tích hợp Google Gemini 3.5 Flash-Lite & 2.5 Pro qua REST client, xử lý luồng Streaming SSE song song bằng Java 21 Virtual Threads.
-  2. *Lớp 2 (System Prompt & Persona)*: 3 Persona độc đáo (`GENZ_DJ`, `MUSIC_CRITIC`, `HEALING_BUDDY`), am hiểu phong cách âm nhạc và văn hóa nghe nhạc Việt Nam.
+  2. *Lớp 2 (System Prompt & Persona)*: 3 Persona độc đáo (`GENZ_DJ`, `MUSIC_CRITIC`, `HEALING_FRIEND`), am hiểu phong cách âm nhạc và văn hóa nghe nhạc Việt Nam.
   3. *Lớp 3 (RAG & Hybrid Search)*: Vector Embeddings 768 chiều (`gemini-embedding-001`), tính toán độ tương đồng Cosine kết hợp lọc từ khóa và thể loại.
   4. *Lớp 4 (Multi-Step Agent Loop)*: Function Calling với các công cụ âm nhạc thật (`trigger_player_action`, `propose_ai_playlist`, `search_music_library`), cơ chế Anti-Hallucination bảo vệ tính toàn vẹn của catalog.
   5. *Lớp 5 (Phân quyền & RBAC)*: Xác thực JWT, chống IDOR, cô lập phiên chat cá nhân.
@@ -450,7 +450,7 @@ Tất cả các endpoints đều có tiền tố: `http://localhost:8080/identit
 |---|---|---|---|
 | `POST` | `/api/ai/chat/stream` | Authenticated | Stream SSE phản hồi AI, hỗ trợ Fast-Path (<10ms), Model Router, RAG & Tool Calling |
 | `GET` | `/api/ai/chat/sessions` | Authenticated | Lấy danh sách các phiên trò chuyện của người dùng |
-| `POST` | `/api/ai/chat/sessions` | Authenticated | Tạo phiên trò chuyện mới (chọn Persona: `GENZ_DJ`, `MUSIC_CRITIC`, `HEALING_BUDDY`) |
+| `POST` | `/api/ai/chat/sessions` | Authenticated | Tạo phiên trò chuyện mới (chọn Persona: `GENZ_DJ`, `MUSIC_CRITIC`, `HEALING_FRIEND`) |
 | `GET` | `/api/ai/chat/sessions/active` | Authenticated | Lấy hoặc khởi tạo phiên trò chuyện đang hoạt động |
 | `GET` | `/api/ai/chat/sessions/{sessionId}/messages` | Authenticated | Lấy lịch sử tin nhắn trong phiên (Sliding Window, bảo toàn thứ tự USER $\rightarrow$ AI) |
 | `DELETE`| `/api/ai/chat/sessions/{sessionId}` | Authenticated | Xóa phiên trò chuyện (kiểm soát IDOR) |
