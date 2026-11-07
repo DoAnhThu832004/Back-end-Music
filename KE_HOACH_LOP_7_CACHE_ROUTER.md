@@ -1,7 +1,7 @@
 # ⚡ KẾ HOẠCH NÂNG CẤP LỚP 7: CACHE & MODEL ROUTER
 > **Dự án:** `identity-service-main` (Spring Boot 3 + Google Gemini) & Android Client App  
 > **Mục tiêu:** Nâng cấp Lớp 7 từ **25%** lên **75% Code-Complete, Telemetry Instrumented** và chuẩn bị nghiệm thu **100% Production-Ready** qua dữ liệu thực tế  
-> **Trạng thái:** 🚀 *Hiệu chuẩn lần 17 — Nguồn Sự Thật Duy Nhất (Single Source of Truth) cho tiến độ, bảng test 109/109 tests passed 100%, và checklist công việc. Làm rõ cơ chế SO_TIMEOUT socket 15s không trả byte nào vs cancel(true) luồng ảo, khắc phục PromQL alert increase() 5m, đo lường p95/p99 TTFT cho Gemini Pro Thinking, thay thế Redis SET NX cho đa instance, và bảo chứng thực nghiệm 58 ca FastPathEngine.*
+> **Trạng thái:** 🚀 *Hiệu chuẩn lần 18 — Nguồn Sự Thật Duy Nhất (Single Source of Truth) cho tiến độ, bảng test 109/109 tests passed 100%, và checklist công việc. Bảo chứng 58 ca FastPathEngine (bao phủ phủ định có dấu & không dấu), PromQL alert increase() kết hợp `or on() vector(0)` chống series rỗng và ghi chú baseline lưu lượng, phân định SO_TIMEOUT 15s điều kiện 0-byte starvation vs cancel(true) luồng ảo, đo lường p50/p95/p99 TTFT cho Gemini Pro Thinking, thay thế Redis SET NX GET cho đa instance, chuẩn hóa Single Source of Truth loại bỏ trùng lặp checklist.*
 
 ---
 
@@ -68,8 +68,8 @@ Tiến độ của Lớp 7 được tính toán minh bạch dựa trên 4 thành
   * Kiểm tra an toàn `Boolean.TRUE.equals(request.clientSupportsTransportActions())` chống Unboxing NPE.
   * Phản hồi đồng bộ: `"Đã tạm dừng phát nhạc."` cho `PAUSE`, `"Đã tiếp tục phát nhạc."` cho `RESUME`, và `"Đã gửi lệnh chuyển bài."` cho `NEXT` (kèm `.autoExecute(true)`).
   * Khớp bổ sung biến thể `"bài tiếp theo"` / `"bai tiep theo"` và tầng fallback không dấu cho câu gõ lẫn lộn dấu (partially accented).
-  * **Bảo chứng thực nghiệm 58 ca Test (bao gồm 5 ca phủ định không dấu):** Bộ kiểm thử `FastPathEngineTest.java` đã được bổ sung 5 ca phủ định không dấu (`"dung tat nhac"`, `"ko dung lai"`, `"cho tat nhac"`, `"ko tat"`, `"dung tam dung"`) và nghiệm thu **58/58 PASS 100%**. Nhờ cấu trúc neo đầu `^` và cuối `$`, các câu phủ định này không khớp `STOP_UNACCENTED` và rơi an toàn xuống Agentic Loop.
-  * **Cảnh báo bẫy thiết kế & Tính hai nghĩa ngữ nghĩa:** Tuyệt đối không phỏng đoán chặn tiền tố `"dung "` bừa bãi vì trong tiếng Việt không dấu, `"dung"` vừa là "dừng" (hợp lệ) vừa là "đừng" (phủ định). Các cụm từ nhập nhằng như `"dung phat"` (đừng phát vs dừng phát) hay `"dung tiep"` (dừng tiếp vs đừng tiếp) phải được phân tích dựa trên dữ liệu log truy vấn người dùng thực tế trước khi thêm quy tắc.
+  * **Bảo chứng thực nghiệm 58 ca Test (Bao phủ cả Phủ định Có Dấu & Không Dấu):** Bộ kiểm thử `FastPathEngineTest.java` đã được kiểm chứng toàn diện 2 tầng: tầng có dấu (`"đừng tắt nhạc"`, `"không dừng lại"`, `"chớ tắt nhạc"`, `"đừng tạm dừng"`) chặn triệt để tại Bước 2; tầng không dấu (`"dung tat nhac"`, `"ko dung lai"`, `"cho tat nhac"`, `"ko tat"`, `"dung tam dung"`) chặn qua neo đầu `^` và cuối `$`, đạt tỷ lệ **58/58 PASS 100%** và chuyển tiếp an toàn xuống Agentic Loop.
+  * **Cảnh báo bẫy thiết kế & Tính hai nghĩa ngữ nghĩa:** Tuyệt đối không phỏng đoán chặn tiền tố `"dung "` bừa bãi vì trong tiếng Việt không dấu, `"dung"` vừa là "dừng" (hợp lệ) vừa là "đừng" (phủ định). Các cụm từ nhập nhằng như `"dung phat"` (đừng phát vs dừng phát) hay `"dung tiep"` (dừng tiếp vs đừng tiếp) phải được phân tích dựa trên dữ liệu log truy vấn người dùng thực tế trước khi thêm quy tắc; các gợi ý regex như `^dung (?:tat|chuyen)\b` tuyệt đối loại trừ `phat` và `tiep` và chỉ mang tính ý niệm.
 
 ---
 
@@ -77,7 +77,8 @@ Tiến độ của Lớp 7 được tính toán minh bạch dựa trên 4 thành
 * **Loại Trừ Lỗi Client (400/403) Khỏi Circuit Breaker & Cảnh Báo Prometheus `increase()`:**
   * `RestClientResponseException` được thu hẹp lại: Chỉ ghi nhận `UpstreamAiException`, `HttpServerErrorException` (5xx), `ResourceAccessException` và `HttpClientErrorException.TooManyRequests` (429) vào `record-exceptions`.
   * Đưa `HttpClientErrorException.BadRequest` (400 - Safety block của Google, prompt vi phạm) và `Forbidden` (403) vào `ignore-exceptions`. Điều này ngăn chặn việc Circuit Breaker cho persona `MUSIC_CRITIC` bị nảy ngắt mạch oan uổng khi người dùng gửi prompt vi phạm chính sách của Google.
-  * Khai báo counter `ai.gemini.client.errors` (400/403) và `ai.gemini.safety.blocks` (in-stream HTTP 200 finishReason=SAFETY) phục vụ Prometheus Alerting độc lập với cú pháp chuẩn xác `increase(...[5m]) > 5` (thay vì `rate()` req/s) và giới hạn cardinality nhãn `reason`.
+  * Khai báo counter `ai.gemini.client.errors` (400/403) và `ai.gemini.safety.blocks` (in-stream HTTP 200) với nhãn `category` được giới hạn qua enum hữu hạn `SafetyBlockCategory`.
+  * **Cảnh báo Prometheus Alert độc lập:** Áp dụng cú pháp chuẩn `(sum(increase(ai_gemini_client_errors_total{status=~"400|403"}[5m])) or on() vector(0)) + (sum(increase(ai_gemini_safety_blocks_total[5m])) or on() vector(0)) > 5`. Cấu trúc `or on() vector(0)` loại trừ lỗi phép cộng vector khi series vắng mặt; ngưỡng `> 5` là giá trị tham khảo khởi điểm cho dev/staging và bắt buộc phải được hiệu chỉnh theo baseline lưu lượng thực tế trên Production.
 * **Vòng Đời Permit, Watchdog 8000ms, Bản Chất SO_TIMEOUT (15s) & `future.cancel(true)`:**
   * Cấp permit qua `tryAcquirePermission()`, bảo vệ chống double-release bằng `AtomicBoolean resultRecorded`.
   * Watchdog 8000ms thực thi qua `CompletableFuture.supplyAsync(..., aiStreamingExecutor)` trên Virtual Threads, cách ly hoàn toàn với ForkJoinPool.
@@ -100,7 +101,7 @@ Tiến độ của Lớp 7 được tính toán minh bạch dựa trên 4 thành
   * Chuẩn hóa Canonical Prompt: NFC $\rightarrow$ bỏ dấu (`VietnameseTextNormalizer.stripDiacritics`) $\rightarrow$ cắt dấu câu cuối $\rightarrow$ gộp khoảng trắng thừa $\rightarrow$ lowercase $\rightarrow$ SHA-256 tích hợp Persona.
   * Tách biệt người dùng ẩn danh: Khi `userId` rỗng/null, ghi nhận `ai.cache.anonymous_prompts` và không lưu vào repeat cache nhằm loại trừ sai lệch dữ liệu lặp lại liên người dùng.
   * Hoàn toàn bọc trong khối `try-catch` **fail-safe**, không bao giờ làm gián đoạn luồng đàm thoại.
-  * **Minh bạch Hóa Đo lường Telemetry:** Prompt rỗng được thoát sớm (sai lệch biên $< 0.01\%$); giới hạn 50k W-TinyLFU và đặc thù in-memory single-instance làm tăng tính chất "cận dưới thận trọng" (Strict Lower Bound) của số đo potential cache hit rate. Khi mở rộng nhiều instance, sử dụng Prometheus aggregation hoặc Redis nguyên tử `SET telemetry:24h:{sha256} {userId} EX 86400 NX` để tính hit chéo (thay vì HyperLogLog vốn không hỗ trợ kiểm tra tồn tại).
+  * **Minh bạch Hóa Đo lường Telemetry:** Prompt rỗng được thoát sớm (sai lệch biên $< 0.01\%$); giới hạn 50k W-TinyLFU và đặc thù in-memory single-instance làm tăng tính chất "cận dưới thận trọng" (Strict Lower Bound) của số đo potential cache hit rate. Khi mở rộng nhiều instance, sử dụng Prometheus aggregation hoặc Redis nguyên tử `SET telemetry:24h:{sha256} {userId} EX 86400 NX GET` (trên Redis 7+ hoặc Lua script) để vừa kiểm tra sự tồn tại của khóa vừa đọc `oldUserId` phân biệt chính xác giữa self-repeat (`oldUserId == userId`) và cross-user repeat (`oldUserId != userId`). Tuyệt đối không dùng HyperLogLog vì không hỗ trợ kiểm tra tồn tại.
 
 ---
 
@@ -193,6 +194,7 @@ GIAI ĐOẠN 2: Model Router & Circuit Breaker [✅ ĐÃ HOÀN THÀNH - ĐẠT 2
   ├── [x] Tách bạch 2 cờ hạ cấp: degradedByBreaker (chặn lưu cache) và reasoningTierDisabled (cho phép lưu cache)
   ├── [x] Quản lý Permit tại executeAgentLoop với cờ resultRecorded chống double release
   ├── [x] Áp dụng First-Token Watchdog 8000ms qua CompletableFuture trên aiStreamingExecutor; kết nối geminiRestClient (socket 15s)
+  ├── [ ] Đo phân phối TTFT (p50/p95/p99) của Reasoning Tier (gemini-2.5-pro) trên Staging để hiệu chuẩn và chốt ngưỡng Watchdog (hiện tại dự phòng 8000ms) trước khi đưa vào sản xuất
   ├── [x] Tinh chỉnh fallback guard: Cho phép read-only tools, chặn đứng side-effect tools chống Double Mutation
   ├── [x] Định nghĩa phân cấp UpstreamAiException ghi nhận vào record-exceptions của Breaker
   ├── [x] Phân loại ngoại lệ theo nguồn: ClientAbortException (hủy upstream + nhả permit) vs Upstream error (ghi nhận vào Breaker)
