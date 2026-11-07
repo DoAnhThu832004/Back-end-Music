@@ -67,11 +67,11 @@ Backend RESTful API hoàn chỉnh cho nền tảng **Phát nhạc trực tuyến
   5. *Lớp 5 (Phân quyền & RBAC)*: Xác thực JWT, chống IDOR, cô lập phiên chat cá nhân.
   6. *Lớp 6 (Guardrails)*: Concurrency Session Lock, Rate Limiting (10 req/phút), kiểm duyệt nội dung độc hại am hiểu tiếng lóng Gen Z.
   7. *Lớp 7 (Cache & Model Router)*:
-     - **Fast-Path Engine (< 10ms)**: Khớp lệnh chào hỏi và player transport (`PAUSE`, `RESUME`, `NEXT`) chạy trước Session Lock, đồng bộ với Android Client.
+     - **Fast-Path Engine (< 10ms)**: Khớp lệnh chào hỏi và player transport (`PAUSE`, `RESUME`, `NEXT`) chạy trước Session Lock, đồng bộ với Android Client, bảo chứng thực nghiệm 58 ca test (bao phủ phủ định không dấu).
      - **Dynamic Model Router**: Phân làn tự động giữa Fast Tier (`gemini-3.5-flash-lite`) và Reasoning Tier (`gemini-2.5-pro`).
      - **Resilience4j Circuit Breaker & First-Token Watchdog (8000ms)**: Tự động ngắt mạch khi upstream gặp sự cố, tự phục hồi sau 30s; cơ chế fallback an toàn phân biệt read-only vs side-effect tools.
-     - **CanCacheEvaluator & Telemetry Service**: 8 cổng kiểm định bypass, bộ đếm Caffeine 50k TTL 30m, phân biệt lặp liên người dùng vs tự thử lại, Khung Quyết Định Dựa Trên Dữ Liệu tiến tới 100% Production-Ready.
-- **Bộ Kiểm Thử Toàn Diện**: 91/91 Unit & Integration Tests đạt tỷ lệ vượt qua 100% (`FastPathEngineTest`, `AiChatControllerTest`, `ModelRouterServiceTest`, `CircuitBreakerLifecycleTest`, `AiAgentOrchestratorTest`, `CanCacheEvaluatorTest`, `TelemetryServiceTest`).
+     - **CanCacheEvaluator & Telemetry Service**: 8 cổng kiểm định bypass, bộ đếm Caffeine 50k TTL 30m & 24h, cô lập Persona Isolation (`persona:canonical`), phân biệt lặp liên người dùng vs tự thử lại, cô lập anonymous prompts, Khung Quyết Định Dựa Trên Dữ Liệu tiến tới 100% Production-Ready.
+- **Bộ Kiểm Thử Toàn Diện**: 109/109 Unit & Integration Tests đạt tỷ lệ vượt qua 100% (`FastPathEngineTest` [58 tests], `AiChatControllerTest` [9 tests], `ModelRouterServiceTest` [7 tests], `CircuitBreakerLifecycleTest` [7 tests], `AiAgentOrchestratorTest` [3 tests], `CanCacheEvaluatorTest` [11 tests], `TelemetryServiceTest` [8 tests], `VietnameseTextNormalizerTest` [6 tests]).
 
 ---
 
@@ -134,7 +134,7 @@ flowchart TD
     
     FastPath -- "Không khớp" --> Lock["🛡️ Lớp 6: Session Concurrency Lock & Rate Limit"]
     
-    Lock --> Telemetry["📊 Lớp 7: Can-Cache Evaluator & Telemetry<br/>(8 Cổng Bypass, Caffeine 50k TTL 30m)"]
+    Lock --> Telemetry["📊 Lớp 7: Can-Cache Evaluator & Telemetry<br/>(8 Cổng Bypass, Caffeine 50k TTL 30m & 24h)"]
     
     Telemetry --> Router["🔀 Lớp 7: Dynamic Model Router<br/>(Fast Tier vs Reasoning Tier + Resilience4j)"]
     
@@ -149,7 +149,7 @@ flowchart TD
     Moderation --> User
 ```
 
-Chi tiết cẩm nang kiến trúc 7 lớp xem tại [KIEN_TRUC_AI_6_LOP.md](KIEN_TRUC_AI_6_LOP.md) và bản đặc tả chi tiết Lớp 7 tại [THIET_KE_CHI_TIET_LOP_7_CACHE_ROUTER.md](THIET_KE_CHI_TIET_LOP_7_CACHE_ROUTER.md).
+Chi tiết cẩm nang kiến trúc 7 lớp xem tại [KIEN_TRUC_AI_7_LOP.md](../KIEN_TRUC_AI_7_LOP.md) và bản đặc tả chi tiết Lớp 7 tại [THIET_KE_CHI_TIET_LOP_7_CACHE_ROUTER.md](../THIET_KE_CHI_TIET_LOP_7_CACHE_ROUTER.md).
 
 ---
 
@@ -163,7 +163,7 @@ Chi tiết cẩm nang kiến trúc 7 lớp xem tại [KIEN_TRUC_AI_6_LOP.md](KIE
 | **Mô hình Ngôn ngữ AI** | Google Gemini (REST API) | 3.5 Flash-Lite / 2.5 Pro | Phân làn Model Router, Streaming SSE, Tool Calling |
 | **Embedding & Vector** | Gemini Embedding Model | gemini-embedding-001 | Vector 768 chiều cho bài hát và câu hỏi đàm thoại |
 | **Khả năng Phục hồi** | Resilience4j | 2.2.0 | Circuit Breaker trượt 120s, tự ngắt mạch và phục hồi sau 30s |
-| **Bộ nhớ đệm Telemetry**| Caffeine Cache | 3.x | Bộ nhớ đệm 50.000 entry TTL 30m đo lặp lại người dùng |
+| **Bộ nhớ đệm Telemetry**| Caffeine Cache | 3.x | Bộ nhớ đệm 50.000 entry TTL 30m & 24h đo lặp lại liên người dùng, cô lập Persona |
 | **Cơ sở dữ liệu** | MySQL | 8.0+ | Quản trị dữ liệu quan hệ, `DATETIME(6)` microsecond precision |
 | **ORM / Data Access**| Spring Data JPA, Hibernate, Flyway | 3.2.2 | Ánh xạ thực thể, Auditing, Quản lý Migration tự động |
 | **Lưu trữ Đám mây** | Cloudinary SDK | 1.36.0 | Lưu trữ tệp âm thanh MP3 và hình ảnh (Avatar, Covers) |
