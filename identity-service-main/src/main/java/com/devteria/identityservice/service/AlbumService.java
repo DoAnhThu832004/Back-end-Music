@@ -6,6 +6,7 @@ import com.devteria.identityservice.dto.request.AlbumCreationRequest;
 import com.devteria.identityservice.dto.request.AlbumUpdateRequest;
 import com.devteria.identityservice.dto.request.PlaylistUpdateRequest;
 import com.devteria.identityservice.dto.response.AlbumResponse;
+import com.devteria.identityservice.dto.response.PageResponse;
 import com.devteria.identityservice.dto.response.PlaylistResponse;
 import com.devteria.identityservice.dto.response.SongResponse;
 import com.devteria.identityservice.entity.Album;
@@ -15,11 +16,18 @@ import com.devteria.identityservice.entity.Song;
 import com.devteria.identityservice.enums.Status;
 import com.devteria.identityservice.exception.AppException;
 import com.devteria.identityservice.exception.ErrorCode;
+import com.devteria.identityservice.mapper.PagingMapper;
 import com.devteria.identityservice.repository.AlbumRepository;
 import com.devteria.identityservice.repository.ArtistRepository;
 import com.devteria.identityservice.repository.SongRepository;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.multipart.MultipartFile;
+
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.PageRequest;
+import org.springframework.data.domain.Pageable;
+import org.springframework.data.domain.Sort;
 
 import java.io.IOException;
 import java.util.HashSet;
@@ -41,39 +49,79 @@ public class AlbumService {
         this.artistRepository = artistRepository;
         this.cloudinary = cloudinary;
     }
+    @Transactional
     public AlbumResponse createAlbum(AlbumCreationRequest request) {
         Album album = toAlbum(request);
         album.setStatus(Status.DRAFT);
         return toAlbumResponse(albumRepository.save(album));
     }
-    public List<AlbumResponse> getAlbums() {
-        return albumRepository.findAll().stream()
+    public PageResponse<AlbumResponse> getAlbums(int page, int size) {
+        Pageable pageable = PageRequest.of(page - 1, size, Sort.by(Sort.Direction.DESC, "createdAt"));
+        Page<Album> albumPage = albumRepository.findAll(pageable);
+
+        List<AlbumResponse> albumResponses = albumPage.getContent().stream()
                 .map(AlbumService::toAlbumResponse)
                 .toList();
+
+        return PagingMapper.toPageResponse(albumPage, albumResponses);
     }
     public AlbumResponse getAlbum(String id) {
         Album album = albumRepository.findById(id)
                 .orElseThrow(() -> new AppException(ErrorCode.ALBUM_NOT_EXISTED));
         return toAlbumResponse(album);
     }
-    public List<AlbumResponse> searchAlbums(String key) {
-        if(key == null || key.trim().isEmpty()) {
-            return List.of();
+    public PageResponse<AlbumResponse> searchAlbums(String key, int page, int size) {
+        if (key == null || key.trim().isEmpty()) {
+            return new PageResponse<>();
         }
-        List<Album> albums = albumRepository.findByNameContainingIgnoreCase(key);
-        return albums.stream()
+
+        Pageable pageable = PageRequest.of(page - 1, size);
+        Page<Album> albumPage = albumRepository.findByNameContainingIgnoreCase(key, pageable);
+        List<AlbumResponse> albumResponses = albumPage.getContent().stream()
                 .map(AlbumService::toAlbumResponse)
                 .toList();
+        return PagingMapper.toPageResponse(albumPage, albumResponses);
     }
+    public PageResponse<AlbumResponse> searchAlbumsForAdmin(String key, int page, int size) {
+        if (key == null || key.trim().isEmpty()) {
+            return new PageResponse<>(page, 0, size, 0, java.util.Collections.emptyList());
+        }
+
+        Pageable pageable = PageRequest.of(page - 1, size);
+        Page<Album> albumPage = albumRepository.findByNameContainingIgnoreCase(key, pageable);
+        List<AlbumResponse> albumResponses = albumPage.getContent().stream()
+                .map(AlbumService::toAlbumResponse)
+                .toList();
+
+        return new PageResponse<>(
+                page,
+                albumPage.getTotalPages(),
+                albumPage.getSize(),
+                albumPage.getTotalElements(),
+                albumResponses
+        );
+    }
+
+    public PageResponse<AlbumResponse> getAlbumsByGenre(String genreId, int page, int size) {
+        Pageable pageable = PageRequest.of(page - 1, size, Sort.by(Sort.Direction.DESC, "createdAt"));
+        Page<Album> albumPage = albumRepository.findByGenreId(genreId, pageable);
+        List<AlbumResponse> albumResponses = albumPage.getContent().stream()
+                .map(AlbumService::toAlbumResponse)
+                .toList();
+        return PagingMapper.toPageResponse(albumPage, albumResponses);
+    }
+    @Transactional
     public AlbumResponse updateAlbum(String id, AlbumUpdateRequest request) {
         Album album = albumRepository.findById(id)
                 .orElseThrow(()-> new AppException(ErrorCode.ALBUM_NOT_EXISTED));
         mapRequestToAlbum(album,request);
         return toAlbumResponse(albumRepository.save(album));
     }
+    @Transactional
     public void deleteAlbum(String id) {
         albumRepository.deleteById(id);
     }
+    @Transactional
     public void addSongToAlbum(String albumId, String songId) {
         Album album = albumRepository.findById(albumId)
                 .orElseThrow(() -> new AppException(ErrorCode.ALBUM_NOT_EXISTED));
@@ -83,6 +131,7 @@ public class AlbumService {
         album.getSongs().add(song);
         songRepository.save(song);
     }
+    @Transactional
     public void removeSongToAlbum(String albumId, String songId) {
         Album album = albumRepository.findById(albumId)
                 .orElseThrow(() -> new AppException(ErrorCode.ALBUM_NOT_EXISTED));
@@ -92,6 +141,7 @@ public class AlbumService {
         song.setAlbum(null);
         songRepository.save(song);
     }
+    @Transactional
     public void addArtistToAlbum(String albumId,String artistId) {
         Album album = albumRepository.findById(albumId)
                 .orElseThrow(()-> new AppException(ErrorCode.ALBUM_NOT_EXISTED));
@@ -100,6 +150,7 @@ public class AlbumService {
         artist.addAlbum(album);
         albumRepository.save(album);
     }
+    @Transactional
     public void removeArtistToAlbum(String albumId,String artistId) {
         Album album = albumRepository.findById(albumId)
                 .orElseThrow(()-> new AppException(ErrorCode.ALBUM_NOT_EXISTED));
@@ -108,6 +159,7 @@ public class AlbumService {
         artist.removeAlbum(album);
         albumRepository.save(album);
     }
+    @Transactional
     public Album uploadAlbumFiles(String albumId, MultipartFile image) throws IOException {
         Album album = albumRepository.findById(albumId)
                 .orElseThrow(() -> new AppException(ErrorCode.SONG_NOT_EXISTED));

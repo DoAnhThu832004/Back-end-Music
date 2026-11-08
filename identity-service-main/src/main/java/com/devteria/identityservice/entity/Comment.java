@@ -6,13 +6,12 @@ import java.time.LocalDateTime;
 import java.util.List;
 
 @Entity
-public class Comment {
+public class Comment extends AbstractAuditEntity {
     @Id
     @GeneratedValue(strategy = GenerationType.UUID)
     private String id;
     private String text;
     private boolean edited = false;
-    private LocalDateTime createAt;
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "user_id")
     private User user;
@@ -26,10 +25,6 @@ public class Comment {
     @OneToMany(mappedBy = "parent", cascade = CascadeType.ALL)
     private List<Comment> replies;
 
-    @PrePersist
-    protected void onCreate() {
-        this.createAt = LocalDateTime.now();
-    }
     public Comment() {
     }
 
@@ -37,7 +32,6 @@ public class Comment {
         this.id = id;
         this.text = text;
         this.edited = edited;
-        this.createAt = createAt;
         this.user = user;
         this.song = song;
         this.parent = parent;
@@ -66,14 +60,6 @@ public class Comment {
 
     public void setEdited(boolean edited) {
         this.edited = edited;
-    }
-
-    public LocalDateTime getCreateAt() {
-        return createAt;
-    }
-
-    public void setCreateAt(LocalDateTime createAt) {
-        this.createAt = createAt;
     }
 
     public User getUser() {

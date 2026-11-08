@@ -1,6 +1,7 @@
 package com.devteria.identityservice.dto.request;
 
 import java.time.LocalDate;
+import java.util.Set;
 
 import jakarta.validation.constraints.Size;
 
@@ -26,4 +27,11 @@ public class UserCreationRequest {
 
     @DobConstraint(min = 10, message = "INVALID_DOB")
     LocalDate dob;
+
+    /**
+     * Danh sách ID các thể loại nhạc yêu thích, được chọn bửi user lần đầu khi đăng ký.
+     * Dùng cho luồng Cold Start: nếu user chưa có lịch sử nghe, hệ thống sẽ gợi ý
+     * các bài hát Trending thuộc những thể loại này.
+     */
+    Set<String> preferredGenreIds;
 }

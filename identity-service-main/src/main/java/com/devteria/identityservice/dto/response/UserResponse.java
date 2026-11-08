@@ -3,6 +3,8 @@ package com.devteria.identityservice.dto.response;
 import java.time.LocalDate;
 import java.util.Set;
 
+import com.devteria.identityservice.dto.response.GenreResponse;
+
 import lombok.*;
 import lombok.experimental.FieldDefaults;
 
@@ -18,5 +20,7 @@ public class UserResponse {
     String lastName;
     LocalDate dob;
     String imageUrl;
+    boolean blocked;
     Set<RoleResponse> roles;
+    Set<GenreResponse> preferredGenres;
 }

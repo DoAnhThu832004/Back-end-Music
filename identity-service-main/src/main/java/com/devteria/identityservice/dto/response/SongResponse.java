@@ -4,6 +4,7 @@ import com.devteria.identityservice.enums.SongType;
 import com.devteria.identityservice.enums.Status;
 
 import java.time.LocalDateTime;
+import java.util.List;
 
 public class SongResponse {
     private String id;
@@ -18,6 +19,14 @@ public class SongResponse {
     private String audioUrl;
     private boolean isFavorite;
     private Long playCount;
+    private List<GenreResponse> genres;
+
+    /**
+     * Điểm dự đoán được tính bởi Item-Based CF pipeline.
+     * Null nếu bài hát đến từ Cold Start (dùng playCount thay thế).
+     * Dùng nội bộ bởi Aggregation step để xếp hạng Artist/Album/Playlist.
+     */
+    private Double predictedScore;
 
     public SongResponse() {
     }
@@ -129,5 +138,21 @@ public class SongResponse {
 
     public void setPlayCount(Long playCount) {
         this.playCount = playCount;
+    }
+
+    public List<GenreResponse> getGenres() {
+        return genres;
+    }
+
+    public void setGenres(List<GenreResponse> genres) {
+        this.genres = genres;
+    }
+
+    public Double getPredictedScore() {
+        return predictedScore;
+    }
+
+    public void setPredictedScore(Double predictedScore) {
+        this.predictedScore = predictedScore;
     }
 }

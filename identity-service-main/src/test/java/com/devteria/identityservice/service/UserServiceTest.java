@@ -16,6 +16,7 @@ import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.test.mock.mockito.MockBean;
 import org.springframework.security.test.context.support.WithMockUser;
 import org.springframework.test.context.TestPropertySource;
+import com.devteria.identityservice.dto.request.UserUpdateRequest;
 
 import com.devteria.identityservice.dto.request.UserCreationRequest;
 import com.devteria.identityservice.dto.response.UserResponse;
@@ -112,5 +113,22 @@ public class UserServiceTest {
         var exception = assertThrows(AppException.class, () -> userService.getMyInfo());
 
         Assertions.assertThat(exception.getErrorCode().getCode()).isEqualTo(1005);
+    }
+
+    @Test
+    @WithMockUser(username = "attacker", roles = {"USER"})
+    void updateUser_unauthorizedUser_fail() {
+        User victim = User.builder()
+                .id("victim-id")
+                .username("victim")
+                .build();
+        when(userRepository.findById("victim-id")).thenReturn(Optional.of(victim));
+
+        UserUpdateRequest updateRequest = UserUpdateRequest.builder()
+                .firstName("Hacked")
+                .build();
+
+        var exception = assertThrows(AppException.class, () -> userService.updateUser("victim-id", updateRequest));
+        Assertions.assertThat(exception.getErrorCode().getCode()).isEqualTo(1007);
     }
 }

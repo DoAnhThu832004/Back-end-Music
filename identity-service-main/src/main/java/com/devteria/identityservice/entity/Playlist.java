@@ -5,7 +5,7 @@ import jakarta.persistence.*;
 import java.util.Set;
 
 @Entity
-public class Playlist {
+public class Playlist extends AbstractAuditEntity {
     @Id
     @GeneratedValue(strategy = GenerationType.UUID)
     private String id;

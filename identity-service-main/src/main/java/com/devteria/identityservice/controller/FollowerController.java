@@ -44,4 +44,15 @@ public class FollowerController {
         response.setResult(Map.of("count", count));
         return response;
     }
+
+    @GetMapping("/my-artists")
+    public ApiResponse<List<ArtistResponse>> getFollowedArtists() {
+        List<ArtistResponse> followedArtists = followerService.getFollowedArtists();
+
+        ApiResponse<List<ArtistResponse>> response = new ApiResponse<>();
+        response.setResult(followedArtists);
+        // Có thể thêm message nếu muốn: response.setMessage("Lấy danh sách nghệ sĩ theo dõi thành công");
+
+        return response;
+    }
 }

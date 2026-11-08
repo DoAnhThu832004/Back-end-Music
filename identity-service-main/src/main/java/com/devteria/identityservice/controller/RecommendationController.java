@@ -1,74 +1,86 @@
 package com.devteria.identityservice.controller;
 
 import com.devteria.identityservice.dto.request.ApiResponse;
-import com.devteria.identityservice.dto.response.SongResponse; // Thêm import này
-import com.devteria.identityservice.entity.Song;
+import com.devteria.identityservice.dto.response.HomeRecommendationResponse;
+import com.devteria.identityservice.dto.response.RecommendationResponse;
+import com.devteria.identityservice.entity.User;
+import com.devteria.identityservice.exception.AppException;
+import com.devteria.identityservice.exception.ErrorCode;
+import com.devteria.identityservice.repository.UserRepository;
 import com.devteria.identityservice.service.RecommendationEngineService;
+import org.springframework.security.core.Authentication;
+import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.web.bind.annotation.GetMapping;
-import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
-
-import java.util.ArrayList;
-import java.util.List;
-import java.util.stream.Collectors;
 
 @RestController
 @RequestMapping("/api/recommendations")
 public class RecommendationController {
 
     private final RecommendationEngineService recommendationEngineService;
+    private final UserRepository userRepository;
 
-    // NẾU BẠN CÓ DÙNG SONG MAPPER (MapStruct), HÃY KHAI BÁO VÀ INJECT NÓ VÀO ĐÂY
-    // private final SongMapper songMapper;
-
-    public RecommendationController(RecommendationEngineService recommendationEngineService) {
+    public RecommendationController(
+            RecommendationEngineService recommendationEngineService,
+            UserRepository userRepository) {
         this.recommendationEngineService = recommendationEngineService;
+        this.userRepository = userRepository;
     }
 
-    // LƯU Ý: Đổi List<Song> thành List<SongResponse>
-    @GetMapping("/users/{userId}")
-    public ApiResponse<List<SongResponse>> getRecommendationsForUser(
-            @PathVariable("userId") String userId,
-            @RequestParam(value = "limit", defaultValue = "10") int limit) {
-
-        // 1. Lấy danh sách Thực thể (Entity) từ thuật toán
-        List<Song> recommendedSongs = recommendationEngineService.getPersonalizedRecommendations(userId, limit);
-
-        // 2. Chuyển đổi Thực thể (Entity) sang Đối tượng truyền tải (DTO / Response)
-        List<SongResponse> responseList = new ArrayList<>();
-
-        for (Song song : recommendedSongs) {
-            SongResponse dto = new SongResponse();
-            dto.setId(song.getId());
-            dto.setName(song.getName());
-            dto.setDescription(song.getDescription());
-            dto.setDuration(song.getDuration());
-            dto.setReleasedDate(song.getReleasedDate());
-            dto.setImageUrl(song.getImageUrl());
-            dto.setAudioUrl(song.getAudioUrl());
-            dto.setPlayCount(song.getPlayCount());
-
-            // Nếu song có quan hệ với các bảng khác, bạn get tên ra (VD: tên ca sĩ)
-            // dto.setArtistName(song.getArtist() != null ? song.getArtist().getName() : "Unknown");
-
-            responseList.add(dto);
+    private String resolveAuthorizedUserId(String requestedUserId) {
+        Authentication authentication = SecurityContextHolder.getContext().getAuthentication();
+        if (authentication == null || authentication.getName() == null) {
+            throw new AppException(ErrorCode.UNAUTHENTICATED);
         }
 
-        /* GHI CHÚ: Nếu project của bạn có sẵn hàm chuyển đổi (Ví dụ trong thư viện MapStruct),
-        bạn có thể xóa vòng for ở trên và dùng lệnh này cho code ngắn gọn:
-        List<SongResponse> responseList = recommendedSongs.stream()
-                .map(songMapper::toSongResponse)
-                .collect(Collectors.toList());
-        */
+        String currentUsername = authentication.getName();
+        User currentUser = userRepository.findByUsername(currentUsername)
+                .orElseThrow(() -> new AppException(ErrorCode.USER_NOT_EXISTED));
 
-        // 3. Đóng gói và trả về
-        ApiResponse<List<SongResponse>> response = new ApiResponse<>();
-        response.setCode(1000);
-        response.setMessage("Truy xuất ma trận gợi ý cá nhân hóa thành công");
-        response.setResult(responseList);
+        boolean isAdmin = authentication.getAuthorities().stream()
+                .anyMatch(a -> a.getAuthority().equals("ROLE_ADMIN"));
 
-        return response;
+        // Nếu client không truyền hoặc truyền rỗng, lấy userId của chính người đăng nhập
+        if (requestedUserId == null || requestedUserId.isBlank()) {
+            return currentUser.getId();
+        }
+
+        // Nếu truyền userId khác mà không phải là ADMIN -> Chặn IDOR!
+        if (!isAdmin && !requestedUserId.equals(currentUser.getId())) {
+            throw new AppException(ErrorCode.UNAUTHORIZED);
+        }
+
+        return requestedUserId;
+    }
+
+    @GetMapping
+    public ApiResponse<RecommendationResponse> getRecommendations(
+            @RequestParam(value = "userId", required = false) String userId,
+            @RequestParam(value = "limit", defaultValue = "10") int limit) {
+
+        String authorizedUserId = resolveAuthorizedUserId(userId);
+        RecommendationResponse result = recommendationEngineService.getRecommendations(authorizedUserId, limit);
+
+        return ApiResponse.<RecommendationResponse>builder()
+                .code(1000)
+                .message("Lấy danh sách gợi ý thành công. Nguồn: " + result.getSource())
+                .result(result)
+                .build();
+    }
+
+    @GetMapping("/home")
+    public ApiResponse<HomeRecommendationResponse> getHomeRecommendations(
+            @RequestParam(value = "userId", required = false) String userId) {
+
+        String authorizedUserId = resolveAuthorizedUserId(userId);
+        HomeRecommendationResponse result = recommendationEngineService.getHomeRecommendations(authorizedUserId);
+
+        return ApiResponse.<HomeRecommendationResponse>builder()
+                .code(1000)
+                .message("Lấy dữ liệu trang chủ thành công. Nguồn: " + result.getSource())
+                .result(result)
+                .build();
     }
 }

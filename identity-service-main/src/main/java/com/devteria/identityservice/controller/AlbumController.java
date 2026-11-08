@@ -5,6 +5,7 @@ import com.devteria.identityservice.dto.request.AlbumCreationRequest;
 import com.devteria.identityservice.dto.request.AlbumUpdateRequest;
 import com.devteria.identityservice.dto.request.ApiResponse;
 import com.devteria.identityservice.dto.response.AlbumResponse;
+import com.devteria.identityservice.dto.response.PageResponse;
 import com.devteria.identityservice.dto.response.SongResponse;
 import com.devteria.identityservice.entity.Album;
 import com.devteria.identityservice.exception.AppException;
@@ -31,9 +32,12 @@ public class AlbumController {
                 .build();
     }
     @GetMapping
-    ApiResponse<List<AlbumResponse>> getAlbums() {
-        return ApiResponse.<List<AlbumResponse>>builder()
-                .result(albumService.getAlbums())
+    public ApiResponse<PageResponse<AlbumResponse>> getAlbums(
+            @RequestParam(value = "page", required = false, defaultValue = "1") int page,
+            @RequestParam(value = "size", required = false, defaultValue = "10") int size
+    ) {
+        return ApiResponse.<PageResponse<AlbumResponse>>builder()
+                .result(albumService.getAlbums(page, size))
                 .build();
     }
     @GetMapping("/{albumId}")
@@ -43,9 +47,23 @@ public class AlbumController {
                 .build();
     }
     @GetMapping("/searchKey")
-    public ApiResponse<List<AlbumResponse>> searchSongs(@RequestParam String name) {
-        return ApiResponse.<List<AlbumResponse>>builder()
-                .result(albumService.searchAlbums(name))
+    public ApiResponse<PageResponse<AlbumResponse>> searchAlbums(
+            @RequestParam String name,
+            @RequestParam(value = "page", required = false, defaultValue = "1") int page,
+            @RequestParam(value = "size", required = false, defaultValue = "10") int size
+    ) {
+        return ApiResponse.<PageResponse<AlbumResponse>>builder()
+                .result(albumService.searchAlbums(name, page, size))
+                .build();
+    }
+    @GetMapping("/admin/searchKey")
+    public ApiResponse<PageResponse<AlbumResponse>> searchAlbumsForAdmin(
+            @RequestParam String name,
+            @RequestParam(defaultValue = "1") int page,
+            @RequestParam(defaultValue = "20") int size
+    ) {
+        return ApiResponse.<PageResponse<AlbumResponse>>builder()
+                .result(albumService.searchAlbumsForAdmin(name, page, size))
                 .build();
     }
     @PutMapping("/{albumId}")
@@ -101,6 +119,17 @@ public class AlbumController {
         albumService.removeArtistToAlbum(albumId,artistId);
         return ApiResponse.<String>builder()
                 .result("Artist removed from album")
+                .build();
+    }
+
+    @GetMapping("/genre/{genreId}")
+    public ApiResponse<PageResponse<AlbumResponse>> getAlbumsByGenre(
+            @PathVariable("genreId") String genreId,
+            @RequestParam(value = "page", required = false, defaultValue = "1") int page,
+            @RequestParam(value = "size", required = false, defaultValue = "10") int size
+    ) {
+        return ApiResponse.<PageResponse<AlbumResponse>>builder()
+                .result(albumService.getAlbumsByGenre(genreId, page, size))
                 .build();
     }
 }

@@ -7,7 +7,7 @@ import java.util.AbstractList;
 import java.util.Set;
 
 @Entity
-public class Artist {
+public class Artist extends AbstractAuditEntity {
     @Id
     @GeneratedValue(strategy = GenerationType.UUID)
     private String id;

@@ -5,6 +5,7 @@ import com.devteria.identityservice.dto.request.ArtistCreationRequest;
 import com.devteria.identityservice.dto.request.ArtistUpdateRequest;
 import com.devteria.identityservice.dto.response.AlbumResponse;
 import com.devteria.identityservice.dto.response.ArtistResponse;
+import com.devteria.identityservice.dto.response.PageResponse;
 import com.devteria.identityservice.dto.response.SongResponse;
 import com.devteria.identityservice.entity.Artist;
 import com.devteria.identityservice.exception.AppException;
@@ -66,6 +67,16 @@ public class ArtistController {
     public ApiResponse<List<ArtistResponse>> searchSongs(@RequestParam String name) {
         return ApiResponse.<List<ArtistResponse>>builder()
                 .result(artistService.searchArtist(name))
+                .build();
+    }
+    @GetMapping("/admin/searchKey")
+    public ApiResponse<PageResponse<ArtistResponse>> searchArtistsForAdmin(
+            @RequestParam String name,
+            @RequestParam(defaultValue = "1") int page,
+            @RequestParam(defaultValue = "20") int size
+    ) {
+        return ApiResponse.<PageResponse<ArtistResponse>>builder()
+                .result(artistService.searchArtistsForAdmin(name, page, size))
                 .build();
     }
     @PostMapping("/{artistId}/upload")

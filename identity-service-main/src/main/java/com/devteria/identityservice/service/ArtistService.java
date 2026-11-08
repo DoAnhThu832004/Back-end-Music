@@ -25,6 +25,11 @@ import java.io.IOException;
 import java.util.*;
 import java.util.stream.Collectors;
 
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.PageRequest;
+import org.springframework.data.domain.Pageable;
+import com.devteria.identityservice.dto.response.PageResponse;
+
 @Service
 public class ArtistService {
     private final ArtistRepository artistRepository;
@@ -88,6 +93,31 @@ public class ArtistService {
                     return response;
                 })
                 .collect(Collectors.toList());
+    }
+    public PageResponse<ArtistResponse> searchArtistsForAdmin(String key, int page, int size) {
+        if (key == null || key.trim().isEmpty()) {
+            return new PageResponse<>(page, 0, size, 0, Collections.emptyList());
+        }
+
+        Pageable pageable = PageRequest.of(page - 1, size);
+        Page<Artist> artistPage = artistRepository.findByNameContainingIgnoreCase(key, pageable);
+
+        Set<String> followArtistId = getFollowerArtistIdOfCurrentUser();
+        List<ArtistResponse> artistResponses = artistPage.getContent().stream()
+                .map(artist -> {
+                    ArtistResponse response = toArtistResponse(artist);
+                    response.setFollowed(followArtistId.contains(artist.getId()));
+                    return response;
+                })
+                .collect(Collectors.toList());
+
+        return new PageResponse<>(
+                page,
+                artistPage.getTotalPages(),
+                artistPage.getSize(),
+                artistPage.getTotalElements(),
+                artistResponses
+        );
     }
     @Transactional
     public ArtistResponse updateArtist(String id, ArtistUpdateRequest request) {

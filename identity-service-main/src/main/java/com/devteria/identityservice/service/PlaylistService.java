@@ -19,6 +19,7 @@ import jakarta.validation.Valid;
 import org.springframework.data.domain.Page;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.multipart.MultipartFile;
 import org.springframework.data.domain.Pageable;
@@ -42,6 +43,7 @@ public class PlaylistService {
         this.cloudinary = cloudinary;
         this.userRepository = userRepository;
     }
+    @Transactional
     public PlaylistResponse createPlaylist(PlaylistCreationRequest request) {
         Playlist playlist = toPlaylist(request);
         String name = SecurityContextHolder.getContext().getAuthentication().getName();
@@ -61,20 +63,56 @@ public class PlaylistService {
         User user = userRepository.findByUsername(username)
                 .orElseThrow(() -> new AppException(ErrorCode.USER_NOT_EXISTED));
 
-        return playlistRepository.findByUser(user).stream()
+        return playlistRepository.findByUserOrderByCreatedAtDesc(user).stream()
                 .map(PlaylistService::toPlaylistResponse).toList();
+    }
+
+    public PageResponse<PlaylistResponse> getPlaylistsByGenre(String genreId, int page, int size) {
+        Pageable pageable = PageRequest.of(page - 1, size, Sort.by(Sort.Direction.DESC, "createdAt"));
+        Page<Playlist> playlistPage = playlistRepository.findAdminPlaylistsByGenreId(genreId, pageable);
+        List<PlaylistResponse> responses = playlistPage.getContent().stream()
+                .map(PlaylistService::toPlaylistResponse)
+                .toList();
+        return new PageResponse<>(
+                page,
+                playlistPage.getTotalPages(),
+                playlistPage.getSize(),
+                playlistPage.getTotalElements(),
+                responses
+        );
+    }
+    public PageResponse<PlaylistResponse> searchPlaylistsForAdmin(String key, int page, int size) {
+        if (key == null || key.trim().isEmpty()) {
+            return new PageResponse<>(page, 0, size, 0, java.util.Collections.emptyList());
+        }
+
+        Pageable pageable = PageRequest.of(page - 1, size);
+        Page<Playlist> playlistPage = playlistRepository.findByTitleContainingIgnoreCase(key, pageable);
+        List<PlaylistResponse> responses = playlistPage.getContent().stream()
+                .map(PlaylistService::toPlaylistResponse)
+                .toList();
+
+        return new PageResponse<>(
+                page,
+                playlistPage.getTotalPages(),
+                playlistPage.getSize(),
+                playlistPage.getTotalElements(),
+                responses
+        );
     }
     public PlaylistResponse getPlaylist(String id) {
         Playlist playlist = playlistRepository.findById(id)
                 .orElseThrow(() -> new AppException(ErrorCode.PLAYLIST_NOT_EXISTED));
         return toPlaylistResponse(playlist);
     }
+    @Transactional
     public PlaylistResponse updatePlaylist(String id, PlaylistUpdateRequest request) {
         Playlist playlist = playlistRepository.findById(id)
                 .orElseThrow(()-> new AppException(ErrorCode.PLAYLIST_NOT_EXISTED));
         mapRequestToPlaylist(playlist,request);
         return toPlaylistResponse(playlistRepository.save(playlist));
     }
+    @Transactional
     public void deletePlaylist(String id) {
         playlistRepository.deleteById(id);
     }
@@ -97,6 +135,7 @@ public class PlaylistService {
 
         return playlistRepository.save(playlist);
     }
+    @Transactional
     public PlaylistResponse addSongToPlaylist(String playlistId, String songId) {
         Playlist playlist = playlistRepository.findById(playlistId)
                 .orElseThrow(() -> new AppException(ErrorCode.PLAYLIST_NOT_EXISTED));
@@ -107,6 +146,7 @@ public class PlaylistService {
         playlist.getSongPlayList().add(song);
         return toPlaylistResponse(playlistRepository.save(playlist));
     }
+    @Transactional
     public PlaylistResponse removeSongFromPlaylist(String playlistId, String songId) {
         Playlist playlist = playlistRepository.findById(playlistId)
                 .orElseThrow(() -> new AppException(ErrorCode.PLAYLIST_NOT_EXISTED));

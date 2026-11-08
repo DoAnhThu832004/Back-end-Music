@@ -4,6 +4,7 @@ import com.devteria.identityservice.enums.SongType;
 import com.devteria.identityservice.enums.Status;
 
 import java.time.LocalDateTime;
+import java.util.List;
 
 public class SongUpdateRequest {
     private String name;
@@ -12,6 +13,7 @@ public class SongUpdateRequest {
     private Long duration;
     private LocalDateTime releasedDate;
     private SongType type;
+    private List<String> genreIds;
 
     public SongUpdateRequest() {
     }
@@ -71,5 +73,13 @@ public class SongUpdateRequest {
 
     public void setType(SongType type) {
         this.type = type;
+    }
+
+    public List<String> getGenreIds() {
+        return genreIds;
+    }
+
+    public void setGenreIds(List<String> genreIds) {
+        this.genreIds = genreIds;
     }
 }

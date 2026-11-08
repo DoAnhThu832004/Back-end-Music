@@ -7,16 +7,24 @@ import com.devteria.identityservice.entity.Genre;
 import com.devteria.identityservice.exception.AppException;
 import com.devteria.identityservice.exception.ErrorCode;
 import com.devteria.identityservice.repository.GenreRepository;
+import com.devteria.identityservice.repository.SongRepository;
+import com.devteria.identityservice.dto.response.GenrePlayCountResponse;
+import com.devteria.identityservice.dto.response.AutoPlaylistResponse;
+import com.devteria.identityservice.dto.response.SongResponse;
+import com.devteria.identityservice.entity.Song;
 import org.springframework.stereotype.Service;
 
 import java.util.List;
+import java.util.stream.Collectors;
 
 @Service
 public class GenreService {
     private final GenreRepository genreRepository;
+    private final SongRepository songRepository;
 
-    public GenreService(GenreRepository genreRepository) {
+    public GenreService(GenreRepository genreRepository, SongRepository songRepository) {
         this.genreRepository = genreRepository;
+        this.songRepository = songRepository;
     }
     public GenreResponse createGenre(GenreCreationRequest request) {
         Genre genre = toGenre(request);
@@ -44,6 +52,27 @@ public class GenreService {
                 .orElseThrow(()-> new AppException(ErrorCode.GENRE_NOT_EXISTED));
         mapRequestToGenre(genre,request);
         return toGenreResponse(genreRepository.save(genre));
+    }
+
+    public List<GenrePlayCountResponse> getTrendingGenres() {
+        return genreRepository.getGenrePlayCounts();
+    }
+
+    public List<AutoPlaylistResponse> getAutoPlaylists() {
+        List<Genre> genres = genreRepository.findAll();
+        return genres.stream().map(genre -> {
+            List<Song> topSongs = songRepository.findTop10ByGenres_IdOrderByPlayCountDesc(genre.getId());
+            List<SongResponse> songResponses = topSongs.stream()
+                    .map(SongService::toSongResponse)
+                    .collect(Collectors.toList());
+            
+            return new AutoPlaylistResponse(
+                    "Tuyển tập " + genre.getName() + " Thư giãn",
+                    "Playlist tự động dựa trên các bài hát " + genre.getName() + " được nghe nhiều nhất.",
+                    toGenreResponse(genre),
+                    songResponses
+            );
+        }).collect(Collectors.toList());
     }
     private void mapRequestToGenre(Genre genre, GenreUpdateRequest request) {
         if (request == null) return;

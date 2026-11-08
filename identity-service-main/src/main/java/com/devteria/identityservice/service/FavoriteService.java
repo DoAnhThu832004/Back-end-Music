@@ -41,6 +41,7 @@ public class FavoriteService {
             favoriteRepository.save(favorite);
         }
     }
+    @Transactional
     public void removeSongFromFavorite(String songId) {
         User user = getCurrentUser();
         Song song = songRepository.findById(songId)

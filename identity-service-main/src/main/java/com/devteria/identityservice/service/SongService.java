@@ -11,13 +11,16 @@ import com.devteria.identityservice.enums.SongType;
 import com.devteria.identityservice.enums.Status;
 import com.devteria.identityservice.exception.AppException;
 import com.devteria.identityservice.exception.ErrorCode;
+import com.devteria.identityservice.mapper.PagingMapper;
 import com.devteria.identityservice.repository.DownloadedSongRepository;
 import com.devteria.identityservice.repository.FavoriteRepository;
+import com.devteria.identityservice.repository.GenreRepository;
 import com.devteria.identityservice.repository.SongRepository;
 import com.devteria.identityservice.repository.UserRepository;
 import org.hibernate.mapping.Collection;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
+import org.springframework.data.domain.Sort;
 import org.springframework.http.ContentDisposition;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
@@ -49,14 +52,20 @@ public class SongService {
     private final FavoriteRepository favoriteRepository;
     private final UserRepository userRepository;
     private final DownloadedSongRepository downloadedSongRepository;
+    private final GenreRepository genreRepository;
+    private final com.devteria.identityservice.repository.UserInteractionRepository userInteractionRepository;
+    private final AiSongEnrichmentService aiSongEnrichmentService;
 
-    public SongService(SongRepository songRepository, YearService yearService, Cloudinary cloudinary, FavoriteRepository favoriteRepository, UserRepository userRepository, DownloadedSongRepository downloadedSongRepository) {
+    public SongService(SongRepository songRepository, YearService yearService, Cloudinary cloudinary, FavoriteRepository favoriteRepository, UserRepository userRepository, DownloadedSongRepository downloadedSongRepository, GenreRepository genreRepository, com.devteria.identityservice.repository.UserInteractionRepository userInteractionRepository, AiSongEnrichmentService aiSongEnrichmentService) {
         this.songRepository = songRepository;
         this.yearService = yearService;
         this.cloudinary = cloudinary;
         this.favoriteRepository = favoriteRepository;
         this.userRepository = userRepository;
         this.downloadedSongRepository = downloadedSongRepository;
+        this.genreRepository = genreRepository;
+        this.userInteractionRepository = userInteractionRepository;
+        this.aiSongEnrichmentService = aiSongEnrichmentService;
     }
 
     @Transactional
@@ -70,25 +79,44 @@ public class SongService {
         song.setType(SongType.AUDIO);
         Year year = yearService.createYear(request.getReleasedDate().getYear());
         song.setYear(year);
+        if (request.getGenreIds() != null) {
+            List<Genre> genres = genreRepository.findAllById(request.getGenreIds());
+            song.setGenres(new java.util.HashSet<>(genres));
+        }
         song = songRepository.save(song);
         return toSongResponse(song);
     }
-    public List<SongResponse> getSongs() {
-        // 1. Lấy toàn bộ bài hát (1 truy vấn DB)
-        List<Song> songs = songRepository.findAll();
+    public PageResponse<SongResponse> getSongs(int page, int size) {
+        Pageable pageable = PageRequest.of(page - 1, size, Sort.by(Sort.Direction.DESC, "releasedDate"));
+        Page<Song> songPage = songRepository.findAll(pageable);
 
-        // 2. Lấy danh sách ID các bài hát user đã thích (1 truy vấn DB)
         Set<String> likedSongIds = getLikedSongIdsOfCurrentUser();
 
-        // 3. Map dữ liệu trong bộ nhớ (Memory) - Không gọi DB nữa
-        return songs.stream()
+        List<SongResponse> songResponses = songPage.getContent().stream()
                 .map(song -> {
                     SongResponse response = toSongResponse(song);
-                    // Tra cứu trong Set cực nhanh (O(1))
                     response.setFavorite(likedSongIds.contains(song.getId()));
                     return response;
                 })
                 .collect(Collectors.toList());
+
+        return PagingMapper.toPageResponse(songPage, songResponses);
+    }
+    public PageResponse<SongResponse> getSongsByGenre(String genreId, int page, int size) {
+        Pageable pageable = PageRequest.of(page - 1, size, Sort.by(Sort.Direction.DESC, "releasedDate"));
+        Page<Song> songPage = songRepository.findByGenres_Id(genreId, pageable);
+
+        Set<String> likedSongIds = getLikedSongIdsOfCurrentUser();
+
+        List<SongResponse> songResponses = songPage.getContent().stream()
+                .map(song -> {
+                    SongResponse response = toSongResponse(song);
+                    response.setFavorite(likedSongIds.contains(song.getId()));
+                    return response;
+                })
+                .collect(Collectors.toList());
+
+        return PagingMapper.toPageResponse(songPage, songResponses);
     }
     public SongResponse getSong(String id) {
         Song song = songRepository.findById(id)
@@ -167,9 +195,14 @@ public class SongService {
             Year year = yearService.createYear(request.getReleasedDate().getYear());
             song.setYear(year);
         }
+        if (request.getGenreIds() != null) {
+            List<Genre> genres = genreRepository.findAllById(request.getGenreIds());
+            song.setGenres(new java.util.HashSet<>(genres));
+        }
         Song updateSong = songRepository.save(song);
         return toSongResponse(updateSong);
     }
+    @Transactional
     public Song uploadSongFile(String songId, MultipartFile image,MultipartFile audio) throws IOException {
         Song song = songRepository.findById(songId)
                 .orElseThrow(() -> new AppException(ErrorCode.SONG_NOT_EXISTED));
@@ -181,14 +214,16 @@ public class SongService {
                 ObjectUtils.asMap("folder", "music_app/images"));
         Map uploadAudio = cloudinary.uploader().upload(audio.getBytes(),
                 ObjectUtils.asMap(
-                        "resource_type", "video", // Cloudinary yêu cầu kiểu này cho file audio/mp3
+                        "resource_type", "video", // Cloudinary yĂªu cáº§u kiá»ƒu nĂ y cho file audio/mp3
                         "folder", "music_app/audios"
                 ));
         song.setImageUrl(uploadImage.get("secure_url").toString());
         song.setAudioUrl(uploadAudio.get("secure_url").toString());
         song.setStatus(Status.PUBLISHED);
 
-        return songRepository.save(song);
+        Song savedSong = songRepository.save(song);
+        aiSongEnrichmentService.enrichSongMetadataAsync(songId);
+        return savedSong;
 
     }
     @Transactional
@@ -213,7 +248,7 @@ public class SongService {
                 })
                 .collect(Collectors.toList());
     }
-    // Tiêm DownloadedSongRepository vào Constructor
+    // TiĂªm DownloadedSongRepository vĂ o Constructor
     public boolean isSongDownloadedByCurrentUser(String songId) {
         User user = getCurrentUser();
         if (user == null) return false;
@@ -223,7 +258,7 @@ public class SongService {
 
         return downloadedSongRepository.existsByUserAndSong(user, song);
     }
-    // Cập nhật hàm downloadSong cũ
+    // Cáº­p nháº­t hĂ m downloadSong cÅ©
     @Transactional
     public ResponseEntity<Resource> downloadSong(String id) {
         Song song = songRepository.findById(id)
@@ -231,7 +266,7 @@ public class SongService {
 
         User currentUser = getCurrentUser();
         if (currentUser != null) {
-            // KIỂM TRA: Nếu chưa tải thì mới lưu vào DB
+            // KIá»‚M TRA: Náº¿u chÆ°a táº£i thĂ¬ má»›i lÆ°u vĂ o DB
             if (!downloadedSongRepository.existsByUserAndSong(currentUser, song)) {
                 DownloadedSong download = new DownloadedSong();
                 download.setUser(currentUser);
@@ -239,7 +274,7 @@ public class SongService {
                 download.setDownloadedAt(LocalDateTime.now());
                 downloadedSongRepository.save(download);
             }
-            // Nếu đã tải rồi thì bỏ qua bước save, chỉ tiến hành trả về file nhạc bên dưới
+            // Náº¿u Ä‘Ă£ táº£i rá»“i thĂ¬ bá» qua bÆ°á»›c save, chá»‰ tiáº¿n hĂ nh tráº£ vá» file nháº¡c bĂªn dÆ°á»›i
         }
 
         try {
@@ -257,7 +292,7 @@ public class SongService {
         }
     }
 
-    // Hàm lấy danh sách bài hát đã tải
+    // HĂ m láº¥y danh sĂ¡ch bĂ i hĂ¡t Ä‘Ă£ táº£i
     public List<SongResponse> getDownloadedSongs() {
         User user = getCurrentUser();
         if (user == null) return Collections.emptyList();
@@ -268,6 +303,25 @@ public class SongService {
                 .map(download -> {
                     SongResponse response = toSongResponse(download.getSong());
                     response.setFavorite(isSongLikedByCurrentUser(download.getSong()));
+                    return response;
+                })
+                .collect(Collectors.toList());
+    }
+
+    public List<SongResponse> getRecentlyPlayedSongs() {
+        User user = getCurrentUser();
+        if (user == null) return Collections.emptyList();
+
+        Pageable limit = PageRequest.of(0, 20);
+        Page<com.devteria.identityservice.entity.UserInteraction> interactions = 
+            userInteractionRepository.findByUserAndInteractionTypeOrderByUpdatedAtDesc(user, "LISTEN", limit);
+
+        Set<String> likedSongIds = getLikedSongIdsOfCurrentUser();
+
+        return interactions.getContent().stream()
+                .map(interaction -> {
+                    SongResponse response = toSongResponse(interaction.getSong());
+                    response.setFavorite(likedSongIds.contains(interaction.getSong().getId()));
                     return response;
                 })
                 .collect(Collectors.toList());
@@ -287,15 +341,20 @@ public class SongService {
         response.setFavorite(false);
         response.setPlayCount(song.getPlayCount() != null ? song.getPlayCount() : 0L);
         if (song.getArtists() != null && !song.getArtists().isEmpty()) {
-            // Cách 1: Sử dụng Stream API (Hiện đại, an toàn)
+            // CĂ¡ch 1: Sá»­ dá»¥ng Stream API (Hiá»‡n Ä‘áº¡i, an toĂ n)
             Artist firstArtist = song.getArtists().stream().findFirst().orElse(null);
 
             if (firstArtist != null) {
                 response.setArtistName(firstArtist.getName());
             }
 
-            // Cách 2 (Truyền thống - Dùng Iterator):
+            // CĂ¡ch 2 (Truyá»n thá»‘ng - DĂ¹ng Iterator):
             // response.setArtistName(song.getArtists().iterator().next().getName());
+        }
+        if (song.getGenres() != null && !song.getGenres().isEmpty()) {
+            response.setGenres(song.getGenres().stream()
+                    .map(GenreService::toGenreResponse)
+                    .collect(Collectors.toList()));
         }
         return response;
     }
@@ -322,5 +381,9 @@ public class SongService {
         User user = getCurrentUser();
         if (user == null) return false;
         return favoriteRepository.existsByUserAndSong(user, song);
+    }
+
+    public SongResponse enrichSongMetadata(String songId, boolean overwrite) {
+        return aiSongEnrichmentService.enrichSongMetadata(songId, overwrite);
     }
 }

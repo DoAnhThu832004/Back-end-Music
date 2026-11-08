@@ -15,8 +15,8 @@
 	<description>Identity service</description>
 	<properties>
 		<java.version>21</java.version>
-		<projectlombok-lombok.version>1.18.30</projectlombok-lombok.version>
-		<mapstruct.version>1.5.5.Final</mapstruct.version>
+		<projectlombok-lombok.version>1.18.36</projectlombok-lombok.version>
+		<mapstruct.version>1.6.3</mapstruct.version>
 		<lombok-mapstruct-binding.version>0.2.0</lombok-mapstruct-binding.version>
 		<spotless.version>2.43.0</spotless.version>
 	</properties>
@@ -46,21 +46,18 @@
 			<groupId>org.springframework.boot</groupId>
 			<artifactId>spring-boot-starter-validation</artifactId>
 		</dependency>
+		<dependency>
+			<groupId>org.springframework.boot</groupId>
+			<artifactId>spring-boot-starter-cache</artifactId>
+		</dependency>
+		<dependency>
+			<groupId>com.github.ben-manes.caffeine</groupId>
+			<artifactId>caffeine</artifactId>
+		</dependency>
 		<!-- https://mvnrepository.com/artifact/org.springframework.security/spring-security-crypto -->
 		<dependency>
 			<groupId>org.springframework.security</groupId>
 			<artifactId>spring-security-crypto</artifactId>
-		</dependency>
-		<dependency>
-			<groupId>org.apache.mahout</groupId>
-			<artifactId>mahout-mr</artifactId>
-			<version>0.13.0</version>
-			<exclusions>
-				<exclusion>
-					<groupId>org.slf4j</groupId>
-					<artifactId>slf4j-log4j12</artifactId>
-				</exclusion>
-			</exclusions>
 		</dependency>
 		<dependency>
 			<groupId>com.mysql</groupId>
@@ -105,12 +102,19 @@
 			<artifactId>mysql</artifactId>
 			<scope>test</scope>
 		</dependency>
-        <dependency>
-            <groupId>org.testng</groupId>
-            <artifactId>testng</artifactId>
-            <version>RELEASE</version>
-            <scope>compile</scope>
-        </dependency>
+		<dependency>
+			<groupId>org.springframework.boot</groupId>
+			<artifactId>spring-boot-starter-actuator</artifactId>
+		</dependency>
+		<dependency>
+			<groupId>org.springframework.boot</groupId>
+			<artifactId>spring-boot-starter-aop</artifactId>
+		</dependency>
+		<dependency>
+			<groupId>io.github.resilience4j</groupId>
+			<artifactId>resilience4j-spring-boot3</artifactId>
+			<version>2.2.0</version>
+		</dependency>
     </dependencies>
 	<dependencyManagement>
 		<dependencies>
@@ -140,7 +144,7 @@
 			<plugin>
 				<groupId>org.apache.maven.plugins</groupId>
 				<artifactId>maven-compiler-plugin</artifactId>
-				<version>${maven-compiler-plugin.version}</version>
+				<version>3.13.0</version>
 				<configuration>
 					<source>${java.version}</source>
 					<target>${java.version}</target>
@@ -165,6 +169,9 @@
 						<arg>-Amapstruct.suppressGeneratorTimestamp=true</arg>
 						<arg>-Amapstruct.defaultComponentModel=spring</arg>
 						<arg>-Amapstruct.verbose=true</arg>
+						<arg>--add-opens=jdk.compiler/com.sun.tools.javac.processing=ALL-UNNAMED</arg>
+						<arg>--add-opens=jdk.compiler/com.sun.tools.javac.code=ALL-UNNAMED</arg>
+						<arg>--add-opens=jdk.compiler/com.sun.tools.javac.util=ALL-UNNAMED</arg>
 					</compilerArgs>
 				</configuration>
 			</plugin>

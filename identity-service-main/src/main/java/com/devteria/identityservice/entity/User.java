@@ -4,6 +4,7 @@ import java.time.LocalDate;
 import java.util.Set;
 
 import jakarta.persistence.*;
+import com.devteria.identityservice.entity.Genre;
 
 import lombok.*;
 import lombok.experimental.FieldDefaults;
@@ -15,7 +16,7 @@ import lombok.experimental.FieldDefaults;
 @AllArgsConstructor
 @FieldDefaults(level = AccessLevel.PRIVATE)
 @Entity
-public class User {
+public class User extends AbstractAuditEntity {
     @Id
     @GeneratedValue(strategy = GenerationType.UUID)
     String id;
@@ -33,4 +34,23 @@ public class User {
 
     @ManyToMany
     Set<Role> roles;
+
+    /**
+     * Trạng thái tài khoản: true = bị chặn, false = bình thường (mặc định).
+     * Admin có thể thay đổi trạng thái này để chặn hoặc mở khoá người dùng.
+     */
+    @Column(nullable = false, columnDefinition = "BOOLEAN DEFAULT FALSE")
+    boolean blocked;
+
+    /**
+     * Thể loại nhạc yêu thích của user — được chọn lần đầu khi đăng ký.
+     * Dùng cho luồng Cold Start trong hệ thống gợi ý nhạc cá nhân hóa.
+     */
+    @ManyToMany
+    @JoinTable(
+            name = "user_preferred_genres",
+            joinColumns = @JoinColumn(name = "user_id"),
+            inverseJoinColumns = @JoinColumn(name = "genre_id")
+    )
+    Set<Genre> preferredGenres;
 }

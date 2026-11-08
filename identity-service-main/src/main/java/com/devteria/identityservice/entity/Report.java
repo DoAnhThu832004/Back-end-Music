@@ -5,10 +5,8 @@ import com.devteria.identityservice.enums.ReportStatus;
 import com.devteria.identityservice.enums.TargetType;
 import jakarta.persistence.*;
 
-import java.time.LocalDateTime;
-
 @Entity
-public class Report {
+public class Report extends AbstractAuditEntity {
     @Id
     @GeneratedValue(strategy = GenerationType.UUID)
     private String id;
@@ -35,21 +33,13 @@ public class Report {
     @Column(nullable = false)
     private ReportStatus status;
 
-    private LocalDateTime createdAt;
-    private LocalDateTime updatedAt;
-
     @PrePersist
     protected void onCreate() {
-        this.createdAt = LocalDateTime.now();
-        this.updatedAt = LocalDateTime.now();
         if (this.status == null) {
             this.status = ReportStatus.PENDING;
         }
     }
-    @PreUpdate
-    protected void onUpdate() {
-        this.updatedAt = LocalDateTime.now();
-    }
+
     public String getId() { return id; }
     public void setId(String id) { this.id = id; }
     public User getUser() { return user; }
@@ -64,8 +54,4 @@ public class Report {
     public void setDescription(String description) { this.description = description; }
     public ReportStatus getStatus() { return status; }
     public void setStatus(ReportStatus status) { this.status = status; }
-    public LocalDateTime getCreatedAt() { return createdAt; }
-    public void setCreatedAt(LocalDateTime createdAt) { this.createdAt = createdAt; }
-    public LocalDateTime getUpdatedAt() { return updatedAt; }
-    public void setUpdatedAt(LocalDateTime updatedAt) { this.updatedAt = updatedAt; }
 }

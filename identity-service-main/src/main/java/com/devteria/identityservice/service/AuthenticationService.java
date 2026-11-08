@@ -8,9 +8,11 @@ import java.util.StringJoiner;
 import java.util.UUID;
 
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 import org.springframework.util.CollectionUtils;
 
 import com.devteria.identityservice.dto.request.AuthenticationRequest;
@@ -80,11 +82,14 @@ public class AuthenticationService {
 
         if (!authenticated) throw new AppException(ErrorCode.UNAUTHENTICATED);
 
+        // Kiá»ƒm tra tĂ i khoáº£n cĂ³ bá»‹ cháº·n khĂ´ng â€” náº¿u bá»‹ cháº·n thĂ¬ tá»« chá»‘i Ä‘Äƒng nháº­p
+        if (user.isBlocked()) throw new AppException(ErrorCode.USER_BLOCKED);
+
         var token = generateToken(user);
 
         return AuthenticationResponse.builder().token(token).authenticated(true).build();
     }
-
+    @Transactional
     public void logout(LogoutRequest request) throws ParseException, JOSEException {
         try {
             var signToken = verifyToken(request.getToken(), true);
@@ -100,7 +105,7 @@ public class AuthenticationService {
             log.info("Token already expired");
         }
     }
-
+    @Transactional
     public AuthenticationResponse refreshToken(RefreshRequest request) throws ParseException, JOSEException {
         var signedJWT = verifyToken(request.getToken(), true);
 
@@ -115,6 +120,8 @@ public class AuthenticationService {
         var username = signedJWT.getJWTClaimsSet().getSubject();
 
         var user = userRepository.findByUsername(username).orElseThrow(() -> new AppException(ErrorCode.UNAUTHENTICATED));
+
+        if (user.isBlocked()) throw new AppException(ErrorCode.USER_BLOCKED);
 
         var token = generateToken(user);
 
@@ -183,5 +190,16 @@ public class AuthenticationService {
             });
 
         return stringJoiner.toString();
+    }
+
+    /**
+     * Cron job tự động dọn dẹp các token đã hết hạn trong bảng blacklist (chạy vào 2:00 sáng mỗi ngày).
+     */
+    @Scheduled(cron = "0 0 2 * * ?")
+    @Transactional
+    public void cleanupExpiredTokens() {
+        log.info("Bắt đầu dọn dẹp các token đã hết hạn trong bảng invalidated_token...");
+        invalidatedTokenRepository.deleteByExpiryTimeBefore(new Date());
+        log.info("Hoàn tất dọn dẹp token đã hết hạn.");
     }
 }

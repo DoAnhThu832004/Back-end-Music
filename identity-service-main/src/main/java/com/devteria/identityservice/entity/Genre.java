@@ -5,13 +5,13 @@ import jakarta.persistence.*;
 import java.util.Set;
 
 @Entity
-public class Genre {
+public class Genre extends AbstractAuditEntity {
     @Id
     @GeneratedValue(strategy = GenerationType.UUID)
     private String id;
     private String keyG;
     private String name;
-    @OneToMany(mappedBy = "genre")
+    @ManyToMany(mappedBy = "genres")
     private Set<Song> songs;
     @ManyToMany(mappedBy = "artistGenre")
     private Set<Artist> artists;

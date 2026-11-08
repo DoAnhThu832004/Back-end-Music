@@ -9,6 +9,7 @@ import jakarta.persistence.JoinColumn;
 import jakarta.persistence.ManyToOne;
 import jakarta.persistence.Table;
 
+import java.time.LocalDateTime;
 import java.util.Objects;
 
 @Entity
@@ -29,15 +30,21 @@ public class UserInteraction {
 
     private Float ratingScore;
 
+    private String interactionType;
+
+    private LocalDateTime updatedAt;
+
     public UserInteraction() {
         // Phương thức khởi tạo mặc định bắt buộc cho Hibernate
     }
 
-    public UserInteraction(String id, User user, Song song, Float ratingScore) {
+    public UserInteraction(String id, User user, Song song, Float ratingScore, String interactionType, LocalDateTime updatedAt) {
         this.id = id;
         this.user = user;
         this.song = song;
         this.ratingScore = ratingScore;
+        this.interactionType = interactionType;
+        this.updatedAt = updatedAt;
     }
 
     public String getId() {
@@ -70,6 +77,22 @@ public class UserInteraction {
 
     public void setRatingScore(Float ratingScore) {
         this.ratingScore = ratingScore;
+    }
+
+    public String getInteractionType() {
+        return interactionType;
+    }
+
+    public void setInteractionType(String interactionType) {
+        this.interactionType = interactionType;
+    }
+
+    public LocalDateTime getUpdatedAt() {
+        return updatedAt;
+    }
+
+    public void setUpdatedAt(LocalDateTime updatedAt) {
+        this.updatedAt = updatedAt;
     }
 
     @Override

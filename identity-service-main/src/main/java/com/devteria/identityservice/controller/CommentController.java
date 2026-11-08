@@ -4,6 +4,7 @@ import com.devteria.identityservice.dto.request.ApiResponse;
 import com.devteria.identityservice.dto.request.CommentCreationRequest;
 import com.devteria.identityservice.dto.request.CommentUpdateRequest;
 import com.devteria.identityservice.dto.response.CommentResponse;
+import com.devteria.identityservice.dto.response.PageResponse;
 import com.devteria.identityservice.service.CommentService;
 import jakarta.validation.Valid;
 import org.springframework.web.bind.annotation.*;
@@ -30,9 +31,13 @@ public class CommentController {
                 .build();
     }
     @GetMapping("/song/{songId}")
-    public ApiResponse<List<CommentResponse>> getCommentsBySong(@PathVariable("songId") String songId) {
-        return ApiResponse.<List<CommentResponse>>builder()
-                .result(commentService.getCommentsBySong(songId))
+    public ApiResponse<PageResponse<CommentResponse>> getCommentsBySong(
+            @PathVariable("songId") String songId,
+            @RequestParam(value = "page", required = false, defaultValue = "1") int page,
+            @RequestParam(value = "size", required = false, defaultValue = "10") int size
+    ) {
+        return ApiResponse.<PageResponse<CommentResponse>>builder()
+                .result(commentService.getCommentsBySong(songId, page, size))
                 .build();
     }
     @PutMapping("/{commentId}")

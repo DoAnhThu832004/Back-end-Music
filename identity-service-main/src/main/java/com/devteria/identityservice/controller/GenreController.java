@@ -9,6 +9,10 @@ import com.devteria.identityservice.service.GenreService;
 import jakarta.validation.Valid;
 import org.springframework.web.bind.annotation.*;
 
+import com.devteria.identityservice.dto.response.AutoPlaylistResponse;
+import com.devteria.identityservice.dto.response.GenrePlayCountResponse;
+import org.springframework.web.bind.annotation.*;
+
 import java.util.List;
 
 @RestController
@@ -60,6 +64,20 @@ public class GenreController {
         genreService.deleteGenre(id);
         return ApiResponse.<String>builder()
                 .result("Genre has been deleted")
+                .build();
+    }
+    
+    @GetMapping("/trending")
+    public ApiResponse<List<GenrePlayCountResponse>> getTrendingGenres() {
+        return ApiResponse.<List<GenrePlayCountResponse>>builder()
+                .result(genreService.getTrendingGenres())
+                .build();
+    }
+
+    @GetMapping("/auto-playlists")
+    public ApiResponse<List<AutoPlaylistResponse>> getAutoPlaylists() {
+        return ApiResponse.<List<AutoPlaylistResponse>>builder()
+                .result(genreService.getAutoPlaylists())
                 .build();
     }
 }

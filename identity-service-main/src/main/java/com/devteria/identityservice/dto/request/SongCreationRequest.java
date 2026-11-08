@@ -3,12 +3,14 @@ package com.devteria.identityservice.dto.request;
 import com.devteria.identityservice.enums.Status;
 
 import java.time.LocalDateTime;
+import java.util.List;
 
 public class SongCreationRequest {
     private String name;
     private String description;
     private Long duration;
     private LocalDateTime releasedDate;
+    private List<String> genreIds;
 
     public SongCreationRequest() {
     }
@@ -50,5 +52,13 @@ public class SongCreationRequest {
 
     public void setReleasedDate(LocalDateTime releasedDate) {
         this.releasedDate = releasedDate;
+    }
+
+    public List<String> getGenreIds() {
+        return genreIds;
+    }
+
+    public void setGenreIds(List<String> genreIds) {
+        this.genreIds = genreIds;
     }
 }

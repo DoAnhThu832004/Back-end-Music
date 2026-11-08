@@ -6,7 +6,7 @@ import jakarta.persistence.*;
 import java.util.Set;
 
 @Entity
-public class Album {
+public class Album extends AbstractAuditEntity {
     @Id
     @GeneratedValue(strategy = GenerationType.UUID)
     private String id;
@@ -20,8 +20,8 @@ public class Album {
     @ManyToMany
     @JoinTable(
             name = "artist_album",
-            joinColumns = @JoinColumn(name = "artist_id"),
-            inverseJoinColumns = @JoinColumn(name = "album_id")
+            joinColumns = @JoinColumn(name = "album_id"),
+            inverseJoinColumns = @JoinColumn(name = "artist_id")
     )
     private Set<Artist> artist;
     public Album() {
