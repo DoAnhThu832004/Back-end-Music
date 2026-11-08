@@ -7,7 +7,7 @@ import java.util.Optional;
  * Phân loại các lý do chặn an toàn và chính sách của Google Gemini API
  * phục vụ việc giám sát Counter ai.gemini.safety.blocks với Bounded Cardinality.
  *
- * Đối chiếu theo tài liệu chính thức Google Gemini API (Kiểm chứng thực tế Tháng 11/2026 - v1beta & gemini-3.5):
+ * Đối chiếu theo đặc tả Google Gemini API (v1beta & gemini-3.5 — cần xác nhận lại khi chạy thực tế với upstream):
  * - BlockReason (Prompt): https://ai.google.dev/api/rest/v1beta/GenerateContentResponse#blockreason
  * - FinishReason (Candidate): https://ai.google.dev/api/rest/v1beta/Candidate#finishreason
  */
@@ -22,6 +22,10 @@ public enum SafetyBlockCategory {
      * Ánh xạ từ promptFeedback.blockReason của Google Gemini API.
      * Trả về Optional rỗng nếu không có blockReason (tức prompt không bị chặn đầu vào).
      * Khi có chuỗi blockReason, ánh xạ về SAFETY, POLICY, hoặc OTHER (default).
+     *
+     * <p><b>Giả định tiền điều kiện:</b> Phương thức chỉ nhận dữ liệu khi {@code promptFeedback != null && promptFeedback.getBlockReason() != null}
+     * (tức upstream đã thực sự kích hoạt cơ chế chặn đầu vào). Do đó, nhánh {@code default -> Optional.of(OTHER)} đóng vai trò
+     * là chốt chặn an toàn hấp thụ mọi lý do chặn mới trong tương lai mà không làm nổ cardinality, không phải để nhận chuỗi tùy ý.</p>
      */
     public static Optional<SafetyBlockCategory> fromPromptBlockReason(String rawReason) {
         if (rawReason == null || rawReason.isBlank()) {
@@ -56,6 +60,8 @@ public enum SafetyBlockCategory {
     /**
      * @deprecated Phương thức này không phân biệt giữa Prompt Block và Candidate FinishReason,
      * có rủi ro ánh xạ nhầm các trạng thái bình thường (như STOP, MAX_TOKENS) thành OTHER và làm phình metric an toàn.
+     * Đã rà soát codebase: không có mã nguồn nghiệp vụ nào gọi hàm này; duy nhất testFromGemini_Deprecated()
+     * trong SafetyBlockCategoryTest kiểm chứng tương thích ngược với @SuppressWarnings("deprecation").
      * Khuyến nghị dùng trực tiếp {@link #fromPromptBlockReason(String)} hoặc {@link #fromCandidateFinishReason(String)}.
      */
     @Deprecated(since = "Layer-7-Rev20", forRemoval = true)

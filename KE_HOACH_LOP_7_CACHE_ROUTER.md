@@ -1,7 +1,7 @@
 # ⚡ KẾ HOẠCH NÂNG CẤP LỚP 7: CACHE & MODEL ROUTER
 > **Dự án:** `identity-service-main` (Spring Boot 3 + Google Gemini) & Android Client App  
 > **Mục tiêu:** Nâng cấp Lớp 7 từ **25%** lên **75% Code-Complete, Telemetry Instrumented** và chuẩn bị nghiệm thu **100% Production-Ready** qua dữ liệu thực tế  
-> **Trạng thái:** 🚀 *Hiệu chuẩn lần 20 — Nguồn Sự Thật Duy Nhất (Single Source of Truth) cho tiến độ, ma trận 120 bài test tự động (100% Pass Rate), và checklist công việc. Chuyển SafetyBlockCategory (11 tests) về đúng Giai đoạn 3 (Telemetry & Observability), chuẩn hóa Giai đoạn 2 thuần Model Router & Breaker (17 tests), fromPromptBlockReason trả Optional loại bỏ nhánh dư & lỗi code mẫu thiếu .increment(), deprecate fromGemini(), cập nhật đối chiếu Gemini API hiện hành Tháng 11/2026, triệt tiêu hoàn toàn mâu thuẫn số liệu).*
+> **Trạng thái:** 🚀 *Hiệu chuẩn lần 21 — Nguồn Sự Thật Duy Nhất (Single Source of Truth) cho tiến độ, ma trận 120 bài test tự động (100% Pass Rate: GĐ1: 67, GĐ2: 17, GĐ3: 36), và checklist công việc. Nhóm toàn bộ checklist [x] hoàn thành lên trước trong Giai đoạn 3, chuyển [ ] Alerting xuống nhóm mở, làm rõ giả định tiền điều kiện fromPromptBlockReason, xác nhận rà soát deprecation fromGemini(), chuẩn hóa đối chiếu Gemini API v1beta & gemini-3.5 cần xác nhận khi chạy thực tế).*
 
 ---
 
@@ -79,7 +79,7 @@ Tiến độ của Lớp 7 được tính toán minh bạch dựa trên 4 thành
   * `RestClientResponseException` được thu hẹp lại: Chỉ ghi nhận `UpstreamAiException`, `HttpServerErrorException` (5xx), `ResourceAccessException` và `HttpClientErrorException.TooManyRequests` (429) vào `record-exceptions`.
   * Đưa `HttpClientErrorException.BadRequest` (400 - Safety block của Google, prompt vi phạm) và `Forbidden` (403) vào `ignore-exceptions`. Điều này ngăn chặn việc Circuit Breaker cho persona `MUSIC_CRITIC` bị nảy ngắt mạch oan uổng khi người dùng gửi prompt vi phạm chính sách của Google.
   * **Đặc Tả Bounded Cardinality & Mã Nguồn `SafetyBlockCategory` (Đã Triển Khai & Kiểm Thử 11/11 PASS):**
-    - **Tài liệu đối chiếu chính thức (Kiểm chứng thực tế Tháng 11/2026 - Gemini API v1beta & gemini-3.5):**
+    - **Tài liệu đối chiếu kỹ thuật (Đặc tả Google Gemini API v1beta & gemini-3.5 — Cần xác nhận lại khi chạy tích hợp thực tế với upstream):**
       - `BlockReason` (Prompt): [ai.google.dev/api/rest/v1beta/GenerateContentResponse#blockreason](https://ai.google.dev/api/rest/v1beta/GenerateContentResponse#blockreason) gồm: `BLOCK_REASON_UNSPECIFIED`, `SAFETY`, `OTHER`, `BLOCKLIST`, `PROHIBITED_CONTENT`.
       - `FinishReason` (Candidate): [ai.google.dev/api/rest/v1beta/Candidate#finishreason](https://ai.google.dev/api/rest/v1beta/Candidate#finishreason) gồm: `FINISH_REASON_UNSPECIFIED`, `STOP`, `MAX_TOKENS`, `SAFETY`, `RECITATION`, `LANGUAGE`, `OTHER`, `BLOCKLIST`, `PROHIBITED_CONTENT`, `SPII`, `MALFORMED_FUNCTION_CALL`.
     - **5 Danh mục Hữu hạn của `SafetyBlockCategory`:**
@@ -89,9 +89,9 @@ Tiến độ của Lớp 7 được tính toán minh bạch dựa trên 4 thành
       4. `PRIVACY`: Tiết lộ thông tin định danh cá nhân nhạy cảm (`FinishReason.SPII`).
       5. `OTHER`: Các lý do chưa phân loại (`BLOCK_REASON_UNSPECIFIED`, `OTHER` ở prompt level) và là **nhánh mặc định `default -> OTHER`** bắt buộc trong code.
     - **Đồng bộ chuẩn hóa: Cả 2 phương thức ánh xạ đều trả về `Optional<SafetyBlockCategory>`:**
-      - `fromPromptBlockReason(String raw)`: Trả về `Optional<SafetyBlockCategory>`. Nếu `raw == null || raw.isBlank()` (tức prompt không bị chặn đầu vào), trả về **`Optional.empty()`**; chỉ khi có lý do chặn mới trả về `Optional.of(...)`, triệt tiêu hoàn toàn nguy cơ đếm sai prompt lành tính. Bỏ nhánh dư thừa `case "BLOCK_REASON_UNSPECIFIED", "OTHER"` để rơi tự nhiên vào `default -> OTHER`.
+      - `fromPromptBlockReason(String raw)`: Trả về `Optional<SafetyBlockCategory>`. Nếu `raw == null || raw.isBlank()` (tức prompt không bị chặn đầu vào), trả về **`Optional.empty()`**; chỉ khi có lý do chặn mới trả về `Optional.of(...)`, triệt tiêu hoàn toàn nguy cơ đếm sai prompt lành tính. Bỏ nhánh dư thừa `case "BLOCK_REASON_UNSPECIFIED", "OTHER"` để rơi tự nhiên vào `default -> OTHER`. *(Giả định tiền điều kiện: Phương thức chỉ nhận dữ liệu khi `promptFeedback != null && promptFeedback.getBlockReason() != null`, do đó nhánh default là chốt chặn an toàn chống nổ cardinality khi Google bổ sung enum mới, không phải để nhận chuỗi tùy ý)*.
       - `fromCandidateFinishReason(String raw)`: Trả về `Optional<SafetyBlockCategory>`. Chỉ trả về giá trị cho các lý do an toàn/chính sách thực sự (`SAFETY`, `RECITATION`, `POLICY`, `PRIVACY`). Đối với `STOP`, `MAX_TOKENS` (chạm giới hạn 800 tokens), `OTHER`, `LANGUAGE`, `MALFORMED_FUNCTION_CALL`, phương thức trả về **`Optional.empty()`**.
-      - **Đánh dấu `@Deprecated` hàm `fromGemini(raw)`:** Hàm cũ ánh xạ chung không phân biệt prompt vs candidate và trả `OTHER` cho `STOP`/`MAX_TOKENS` tiềm ẩn rủi ro nổ metric an toàn; đã đánh dấu `@Deprecated(since = "Layer-7-Rev20", forRemoval = true)`.
+      - **Đánh dấu `@Deprecated` hàm `fromGemini(raw)`:** Hàm cũ ánh xạ chung không phân biệt prompt vs candidate và trả `OTHER` cho `STOP`/`MAX_TOKENS` tiềm ẩn rủi ro nổ metric an toàn; đã đánh dấu `@Deprecated(since = "Layer-7-Rev20", forRemoval = true)`. *(Rà soát codebase: Không có mã nguồn nghiệp vụ nào gọi hàm này; duy nhất `testFromGemini_Deprecated()` trong `SafetyBlockCategoryTest` kiểm chứng tương thích ngược với `@SuppressWarnings("deprecation")`)*.
       - **Quy chuẩn gọi Counter:** Cả hai tầng đều kiểm tra `Optional.isPresent()` trước khi gọi `.increment()`, khắc phục triệt để lỗi code mẫu thiếu `.increment()`.
   * **Cảnh Báo Prometheus Alert Độc Lập: Eager vs First-Event Registration & Bẫy Vector Một Vế Rỗng:**
     - **Hai hướng tiếp cận đăng ký Counter:**
@@ -238,16 +238,15 @@ GIAI ĐOẠN 2: Dynamic Model Router & Circuit Breaker [✅ HOÀN TẤT MÃ NGU�
   └── [x] Viết ModelRouterServiceTest (7/7 PASS), CircuitBreakerLifecycleTest (7/7 PASS), AiAgentOrchestratorTest (3/3 PASS) [Tổng: 17/17 PASS]
 
 GIAI ĐOẠN 3: Telemetry, Observability & Bounded Safety Metrics [🔬 HOÀN TẤT MÃ NGUỒN (36 TESTS) - ĐANG MỞ ĐO THỰC TẾ & ALERTING]
-  ├── [ ] Thiết lập cảnh báo Prometheus Alert độc lập cho lỗi 400/403 và in-stream safety blocks:
-  │     ├── [x] Định nghĩa enum SafetyBlockCategory (SAFETY, RECITATION, POLICY, PRIVACY, OTHER), hai hàm fromPromptBlockReason & fromCandidateFinishReason đều trả Optional, deprecate fromGemini() kèm bộ unit test (SafetyBlockCategoryTest: 11/11 PASS)
-  │     └── [ ] Cấu hình rule Prometheus Alerting với PromQL increase() kết hợp or on() vector(0) (hoặc Eager Counter Registration) và hiệu chỉnh theo baseline lưu lượng thực
   ├── [x] Xây dựng CanCacheEvaluator quét 2 tầng có dấu ((?U)) và không dấu phân loại 8 lý do BYPASS
   ├── [x] Cơ chế Over-Bypass có chủ ý: Tách "nhạc của anh" khỏi "nhạc Anh" bảo vệ an toàn PII
   ├── [x] Xây dựng TelemetryService (Caffeine 50.000 mục, TTL 30m & 24h, canonicalization SHA-256 tích hợp Persona)
   ├── [x] Cô lập người dùng ẩn danh bằng metric ai.cache.anonymous_prompts, không làm ô nhiễm repeat cache
   ├── [x] Tách tiện ích dùng chung VietnameseTextNormalizer.stripDiacritics dùng cho cả 3 service
   ├── [x] Tích hợp CanCacheEvaluator và TelemetryService an toàn (fail-safe) vào AiAgentOrchestrator
+  ├── [x] Định nghĩa enum SafetyBlockCategory (SAFETY, RECITATION, POLICY, PRIVACY, OTHER), cả 2 hàm prompt & candidate đều trả Optional, deprecate fromGemini()
   ├── [x] Viết CanCacheEvaluatorTest (11/11 PASS), TelemetryServiceTest (8/8 PASS), VietnameseTextNormalizerTest (6/6 PASS), SafetyBlockCategoryTest (11/11 PASS) [Tổng: 36/36 PASS]
+  ├── [ ] Cấu hình rule Prometheus Alerting độc lập cho lỗi 400/403 và safety blocks với PromQL increase() kết hợp or on() vector(0) và hiệu chỉnh theo baseline lưu lượng thực
   ├── [ ] Thu thập số liệu telemetry thực tế trên production/staging (Mẫu N >= 5.000 lượt):
   │     ├── Nếu >= 3%: Kích hoạt triển khai Vector Cache 5 cổng (pgvector / Milvus / in-memory HNSW)
   │     ├── Nếu 1% - 3%: Chạy thử nghiệm SHADOW MODE trên 10% lưu lượng trong 7 ngày
