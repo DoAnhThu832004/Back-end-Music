@@ -7,6 +7,7 @@ import com.devteria.identityservice.dto.response.SongCardDto;
 import com.devteria.identityservice.enums.AiPersona;
 import com.devteria.identityservice.enums.MessageStatus;
 import com.devteria.identityservice.enums.ModelTier;
+import com.devteria.identityservice.enums.SafetyBlockCategory;
 import com.devteria.identityservice.exception.FirstTokenTimeoutException;
 import com.devteria.identityservice.exception.UpstreamAiException;
 import com.fasterxml.jackson.core.type.TypeReference;
@@ -387,10 +388,23 @@ public class AiAgentOrchestrator {
                     String endpoint = "/models/" + currentTargetModel + ":generateContent";
 
                     String responseJson;
+                    long callStartNs = System.nanoTime();
                     try {
                         responseJson = callWithWatchdog(endpoint, requestJson, routerProperties.getFirstTokenTimeoutMs());
+                        long callDurationNs = System.nanoTime() - callStartNs;
+                        if (meterRegistry != null) {
+                            meterRegistry.timer("ai.latency.ttft", "model", currentTargetModel).record(callDurationNs, TimeUnit.NANOSECONDS);
+                        }
                     } catch (Exception callEx) {
                         log.error("[Agent Orchestrator] Lỗi khi gọi Gemini (Model={}): {}", currentTargetModel, callEx.getMessage());
+
+                        if (meterRegistry != null && callEx.getMessage() != null) {
+                            if (callEx.getMessage().contains("400")) {
+                                meterRegistry.counter("ai.gemini.client.errors", "status", "400").increment();
+                            } else if (callEx.getMessage().contains("403")) {
+                                meterRegistry.counter("ai.gemini.client.errors", "status", "403").increment();
+                            }
+                        }
 
                         // Phân biệt lỗi Client Abort
                         if (isClientAbort(callEx)) {
@@ -443,6 +457,18 @@ public class AiAgentOrchestrator {
 
                     JsonNode root = objectMapper.readTree(responseJson);
 
+                    // Ghi nhận Safety Blocks từ PromptFeedback (nếu có)
+                    JsonNode promptFeedback = root.path("promptFeedback");
+                    if (!promptFeedback.isMissingNode() && promptFeedback.has("blockReason")) {
+                        String blockReason = promptFeedback.path("blockReason").asText();
+                        Optional<SafetyBlockCategory> categoryOpt = SafetyBlockCategory.fromPromptBlockReason(blockReason);
+                        categoryOpt.ifPresent(category -> {
+                            if (meterRegistry != null) {
+                                meterRegistry.counter("ai.gemini.safety.blocks", "category", category.name()).increment();
+                            }
+                        });
+                    }
+
                     // Đọc token usage
                     JsonNode usageNode = root.path("usageMetadata");
                     if (!usageNode.isMissingNode() && usageNode.has("totalTokenCount")) {
@@ -453,6 +479,17 @@ public class AiAgentOrchestrator {
                     if (candidates.isMissingNode() || !candidates.isArray() || candidates.isEmpty()) {
                         log.warn("[Agent Orchestrator] Không có candidate nào trong phản hồi Gemini");
                         break;
+                    }
+
+                    // Ghi nhận Safety Blocks từ Candidate finishReason (nếu có)
+                    String finishReason = candidates.get(0).path("finishReason").asText(null);
+                    if (finishReason != null) {
+                        Optional<SafetyBlockCategory> candidateCategoryOpt = SafetyBlockCategory.fromCandidateFinishReason(finishReason);
+                        candidateCategoryOpt.ifPresent(category -> {
+                            if (meterRegistry != null) {
+                                meterRegistry.counter("ai.gemini.safety.blocks", "category", category.name()).increment();
+                            }
+                        });
                     }
 
                     JsonNode contentNode = candidates.get(0).path("content");

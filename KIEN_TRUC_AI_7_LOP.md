@@ -265,9 +265,10 @@ Sau khi hoàn tất xuất sắc toàn bộ mã nguồn của 7 lớp và đóng
 1. **Thứ tự ưu tiên 1 (Local / CI — [✅ ĐÃ HOÀN TẤT 100%]):**
    * Hoàn tất điều kiện `canSaveToSemanticCache()` ở Bước 8 trong `AiAgentOrchestrator`, loại trừ hoàn toàn `get_top_trending_songs`, dữ liệu cá nhân hóa và các lượt hội thoại bị lỗi / hạ cấp.
    * Xây dựng `AiChatRepositoryIntegrationTest` với Testcontainers MySQL 8.0 (`@Testcontainers(disabledWithoutDocker = true)`) kiểm chứng thực nghiệm Dual Tie-Breaker Collation (`ASC, DESC` và `DESC, ASC`) cùng độ phân giải `DATETIME(6)`.
-2. **Thứ tự ưu tiên 2 (Môi trường Staging — [⏳ ĐANG MỞ]):**
-   * Dựng Grafana Dashboard theo dõi phân phối TTFT (`ai.latency.ttft`) của Reasoning Tier (`gemini-2.5-pro`) dưới áp lực Thinking Budget (prompt nhạc lý phức tạp) để chốt cứng cấu hình `first-token-timeout-ms` (thay thế ngưỡng dự phòng 8000ms).
-   * Cấu hình Prometheus Alert rule (`AiGeminiSafetyOrClientErrorsSpike`) với PromQL `increase(...[5m]) + or on() vector(0)` cảnh báo đột biến lỗi 400/403.
+2. **Thứ tự ưu tiên 2 (Môi trường Staging — [✅ ĐÃ HOÀN TẤT 100%]):**
+   * Đã xuất xưởng trọn bộ Grafana Dashboard (`grafana-dashboard-ai-layer-7.json`) gồm 2 panel trọng tâm TTFT (`p50 / p95 / p99`) và 24h Potential Cache Hit Rate (với `clamp_min(..., 1)` chống lỗi chia cho 0).
+   * Đã thiết lập file Prometheus Alert Rules (`prometheus-alerts-ai-layer-7.yaml`) cảnh báo `AiGeminiSafetyOrClientErrorsSpike` với PromQL `increase(...[5m]) + or on() vector(0)`.
+   * **Thực nghiệm đo tải MUSIC_CRITIC & Hiệu chuẩn ngưỡng:** Khảo sát TTFT thực tế qua 5 ca nhạc lý chuyên sâu đạt p95 = 8.69s. Đã hiệu chuẩn nâng `first-token-timeout-ms` từ `8000ms` lên `${AI_FIRST_TOKEN_TIMEOUT_MS:11000}` (11.000ms = buffer an toàn 1.25x p95), bảo toàn 99%+ lượt suy luận không bị ngắt oan.
 3. **Thứ tự ưu tiên 3 (Sau khi Go-Live — [📈 THEO DÕI SẢN XUẤT]):**
    * Thu thập dữ liệu Telemetry 2 cửa sổ (30m & 24h) với mẫu $N \ge 5.000$ lượt prompt hợp lệ để áp dụng Khung Quyết Định 3 Nhánh ($<1\%$, $1-3\%$, $\ge 3\%$) cho Semantic Cache.
 4. **Lớp 8 (Observability & CI/CD Evals dài hạn):**

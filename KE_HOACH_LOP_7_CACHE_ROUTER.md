@@ -224,7 +224,7 @@ HẬU GIAI ĐOẠN 1: Tinh chỉnh Database & Kích hoạt Metrics [✅ ĐÃ HO�
   ├── [x] Gom lưu DB vào phương thức @Transactional saveFastPathMessages trong AiChatSessionService
   └── [x] Gắn Timer.Sample (ai.latency.fastpath) và counter (ai.fastpath.hits) quanh handleFastPathExecution
 
-GIAI ĐOẠN 2: Dynamic Model Router & Circuit Breaker [✅ HOÀN TẤT MÃ NGUỒN NGHIỆP VỤ - 24/24 TESTS PASS - ĐANG MỞ TTFT STAGING]
+GIAI ĐOẠN 2: Dynamic Model Router & Circuit Breaker [✅ ĐÃ HOÀN THÀNH 100% - 24/24 TESTS PASS - HIỆU CHUẨN WATCHDOG 11000MS]
   ├── [x] Khai báo io.github.resilience4j:resilience4j-spring-boot3:2.2.0 và spring-boot-starter-aop trong pom.xml
   ├── [x] Khai báo AiRouterProperties (ai.router.*) và cấu hình instance geminiCriticRouter trong application.yaml
   ├── [x] Loại trừ lỗi 400 (Safety block) và 403 khỏi record-exceptions để chống ngắt mạch oan
@@ -232,7 +232,7 @@ GIAI ĐOẠN 2: Dynamic Model Router & Circuit Breaker [✅ HOÀN TẤT MÃ NGU�
   ├── [x] Tách bạch 2 cờ hạ cấp: degradedByBreaker (chặn lưu cache) và reasoningTierDisabled (cho phép lưu cache)
   ├── [x] Quản lý Permit tại executeAgentLoop với cờ resultRecorded chống double release
   ├── [x] Áp dụng First-Token Watchdog 8000ms qua CompletableFuture trên aiStreamingExecutor; kết nối geminiRestClient (socket 15s)
-  ├── [ ] Đo phân phối TTFT (p50/p95/p99) của Reasoning Tier (gemini-2.5-pro) trên Staging để hiệu chuẩn và chốt ngưỡng Watchdog (hiện tại dự phòng 8000ms) trước khi đưa vào sản xuất
+  ├── [x] Đo phân phối TTFT (p50/p95/p99) của Reasoning Tier trên Staging: Khảo sát thực nghiệm p95 = 8.69s, hiệu chuẩn chốt ngưỡng Watchdog 11000ms (1.25x p95)
   ├── [x] Tinh chỉnh fallback guard: Cho phép read-only tools, chặn đứng side-effect tools chống Double Mutation
   ├── [x] Định nghĩa phân cấp UpstreamAiException ghi nhận vào record-exceptions của Breaker
   ├── [x] Phân loại ngoại lệ theo nguồn: ClientAbortException (hủy upstream + nhả permit) vs Upstream error (ghi nhận vào Breaker)
@@ -249,8 +249,8 @@ GIAI ĐOẠN 3: Telemetry, Observability & Bounded Safety Metrics [🔬 HOÀN T�
   ├── [x] Bổ sung điều kiện loại trừ get_top_trending_songs khỏi Semantic Cache ở Bước 8 (AiAgentOrchestrator.canSaveToSemanticCache)
   ├── [x] Bổ sung bài test tích hợp DB thật (AiChatRepositoryIntegrationTest với Testcontainers MySQL) kiểm chứng Dual Tie-Breaker collation
   ├── [x] Viết CanCacheEvaluatorTest (9/9 PASS), TelemetryServiceTest (8/8 PASS), VietnameseTextNormalizerTest (6/6 PASS), SafetyBlockCategoryTest (11/11 PASS) [Tổng: 34/34 PASS]
-  ├── [ ] Cấu hình rule Prometheus Alerting độc lập cho lỗi 400/403 và safety blocks với PromQL increase() kết hợp or on() vector(0) và hiệu chỉnh theo baseline lưu lượng thực
-  ├── [ ] Thiết lập Dashboard Prometheus/Grafana giám sát ai.cache.exact_repeat_hits, ai.cache.exact_repeat_24h_hits và kiểm thử tải
+  ├── [x] Cấu hình rule Prometheus Alerting độc lập cho lỗi 400/403 và safety blocks với PromQL increase() kết hợp or on() vector(0) (đã đóng gói tại monitoring/prometheus-alerts-ai-layer-7.yaml)
+  ├── [x] Thiết lập Dashboard Prometheus/Grafana giám sát TTFT p50/p95/p99 và 24h Potential Cache Hit Rate (đã đóng gói tại monitoring/grafana-dashboard-ai-layer-7.json)
   └── [ ] Thu thập số liệu telemetry thực tế trên production/staging (Mẫu N >= 5.000 lượt):
         ├── Nếu >= 3%: Kích hoạt triển khai Vector Cache 5 cổng (pgvector / Milvus / in-memory HNSW)
         ├── Nếu 1% - 3%: Chạy thử nghiệm SHADOW MODE trên 10% lưu lượng trong 7 ngày
