@@ -25,11 +25,11 @@ public class ChatMessage extends AbstractAuditEntity {
     private ChatSession session;
 
     @Enumerated(EnumType.STRING)
-    @Column(nullable = false, length = 16)
+    @Column(nullable = false, length = 16, columnDefinition = "VARCHAR(16)")
     private MessageSender sender;
 
     @Enumerated(EnumType.STRING)
-    @Column(nullable = false, length = 20)
+    @Column(nullable = false, length = 20, columnDefinition = "VARCHAR(20)")
     @Builder.Default
     private MessageStatus status = MessageStatus.COMPLETE;
 
