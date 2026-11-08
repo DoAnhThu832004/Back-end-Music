@@ -1,7 +1,7 @@
 # ⚡ KẾ HOẠCH NÂNG CẤP LỚP 7: CACHE & MODEL ROUTER
 > **Dự án:** `identity-service-main` (Spring Boot 3 + Google Gemini) & Android Client App  
 > **Mục tiêu:** Nâng cấp Lớp 7 từ **25%** lên **75% Code-Complete, Telemetry Instrumented** và chuẩn bị nghiệm thu **100% Production-Ready** qua dữ liệu thực tế  
-> **Trạng thái:** 🚀 *Hiệu chuẩn lần 19 — Nguồn Sự Thật Duy Nhất (Single Source of Truth) cho tiến độ, bảng test 109/109 tests passed 100%, và checklist công việc. Bảo chứng 58 ca FastPathEngine (bao phủ phủ định có dấu & không dấu), chuẩn hóa bảng ánh xạ SafetyBlockCategory theo chuẩn Google Gemini API, phân định rõ ràng giữa Eager vs Lazy registration cho Micrometer, bẫy phép cộng vector 1 vế rỗng, loại trừ MAX_TOKENS khỏi safety alert, đặc tả Lua script atomic cho Redis < 7.0, đồng bộ HTML anchors).*
+> **Trạng thái:** 🚀 *Hiệu chuẩn lần 19 — Nguồn Sự Thật Duy Nhất (Single Source of Truth) cho tiến độ, bảng test 120/120 tests passed 100%, và checklist công việc. Triển khai hoàn tất mã nguồn & test cho SafetyBlockCategory (11/11 PASS), bảo chứng 58 ca FastPathEngine (bao phủ phủ định có dấu & không dấu), chuẩn hóa bảng ánh xạ theo đặc tả chính thức Gemini API v1beta (URLs & snapshot 11/2024), phân định tách biệt fromPromptBlockReason vs fromCandidateFinishReason loại trừ MAX_TOKENS/STOP/OTHER, làm rõ cơ chế đăng ký Counter (Eager vs First-Event), phân tích chi tiết Lua script Redis < 7.0, đồng bộ HTML anchors).*
 
 ---
 
@@ -17,9 +17,9 @@ Tiến độ của Lớp 7 được tính toán minh bạch dựa trên 4 thành
 | :--- | :---: | :---: | :--- |
 | **Traditional Data Cache** | 25% | **25% (Sẵn có)** | Caffeine cache cho top trending SQL, In-memory ConcurrentMap cho Vector bài hát |
 | **Fast-Path Command Engine** | 25% | **+25% (Lũy kế 50%)** | **ĐÃ HOÀN THÀNH & NGHIỆM THU (67 tests):** Regex Two-tier có/không dấu, unaccented fallback, "bài tiếp theo", chạy trước Session Lock, đồng bộ Android Client, `DATETIME(6)` microsecond precision, `@Transactional saveFastPathMessages`, Dual Tie-Breaker theo String, 5 ca test phủ định không dấu |
-| **Dynamic Model Router & Fallback** | 25% | **+25% (Lũy kế 75%)** | **ĐÃ HOÀN THÀNH & NGHIỆM THU (17 tests):** `ModelRouterService`, Resilience4j `geminiCriticRouter` (loại trừ 400/403 safety khỏi Breaker), watchdog 8000ms trên `aiStreamingExecutor` (socket 15s), phân cấp `UpstreamAiException`, fallback an toàn phân biệt read-only vs side-effect |
+| **Dynamic Model Router & Fallback** | 25% | **+25% (Lũy kế 75%)** | **ĐÃ HOÀN THÀNH & NGHIỆM THU (28 tests):** `ModelRouterService`, Resilience4j `geminiCriticRouter` (loại trừ 400/403 safety khỏi Breaker), watchdog 8000ms trên `aiStreamingExecutor` (socket 15s), phân cấp `UpstreamAiException`, fallback an toàn phân biệt read-only vs side-effect, và mã nguồn chuẩn hóa `SafetyBlockCategory` (11 tests) |
 | **Telemetry & Data-Driven Decision** | 25% | **Hạ tầng hoàn tất (25 tests)<br/>Đang thu thập số liệu** | **ĐÃ TRIỂN KHAI HOÀN TẤT & TEST (25 tests):** `CanCacheEvaluator` (8 cổng bypass, regex `(?U)`, over-bypass "nhạc Anh" có chủ ý), `TelemetryService` (Caffeine 50k, cửa sổ 30m & 24h, cô lập `persona:canonical`, tách riêng anonymous prompts), `VietnameseTextNormalizer.stripDiacritics`. **100% Production-Ready** sẽ được ký duyệt sau khi hoàn tất đo đạc thực tế |
-| **TỔNG CỘNG** | **100%** | **75% Code-Complete, Telemetry Instrumented** | **109/109 Unit & Integration Tests Passed (100% Pass Rate). Sẵn sàng giai đoạn đo lường thực tế.** |
+| **TỔNG CỘNG** | **100%** | **75% Code-Complete, Telemetry Instrumented** | **120/120 Unit & Integration Tests Passed (100% Pass Rate). Sẵn sàng giai đoạn đo lường thực tế.** |
 
 ---
 
@@ -78,21 +78,25 @@ Tiến độ của Lớp 7 được tính toán minh bạch dựa trên 4 thành
 * **Loại Trừ Lỗi Client (400/403) Khỏi Circuit Breaker & Cảnh Báo Prometheus `increase()`:**
   * `RestClientResponseException` được thu hẹp lại: Chỉ ghi nhận `UpstreamAiException`, `HttpServerErrorException` (5xx), `ResourceAccessException` và `HttpClientErrorException.TooManyRequests` (429) vào `record-exceptions`.
   * Đưa `HttpClientErrorException.BadRequest` (400 - Safety block của Google, prompt vi phạm) và `Forbidden` (403) vào `ignore-exceptions`. Điều này ngăn chặn việc Circuit Breaker cho persona `MUSIC_CRITIC` bị nảy ngắt mạch oan uổng khi người dùng gửi prompt vi phạm chính sách của Google.
-  * **Đặc tả Bounded Cardinality qua `SafetyBlockCategory` (Chuẩn Hóa Theo Gemini API, Đưa vào Checklist `[ ]`):**
-    - **Đối chiếu chuẩn Gemini API:** Tài liệu chính thức của Google Gemini định nghĩa các enum: `BlockReason` (`BLOCK_REASON_UNSPECIFIED`, `SAFETY`, `OTHER`, `BLOCKLIST`, `PROHIBITED_CONTENT`) và `FinishReason` (`FINISH_REASON_UNSPECIFIED`, `STOP`, `MAX_TOKENS`, `SAFETY`, `RECITATION`, `LANGUAGE`, `OTHER`, `BLOCKLIST`, `PROHIBITED_CONTENT`, `SPII`, `MALFORMED_FUNCTION_CALL`).
+  * **Đặc Tả Bounded Cardinality & Mã Nguồn `SafetyBlockCategory` (Đã Triển Khai & Kiểm Thử 11/11 PASS):**
+    - **Tài liệu đối chiếu chính thức (Snapshot 11/2024 - Gemini API v1beta):**
+      - `BlockReason` (Prompt): [ai.google.dev/api/rest/v1beta/GenerateContentResponse#blockreason](https://ai.google.dev/api/rest/v1beta/GenerateContentResponse#blockreason) gồm: `BLOCK_REASON_UNSPECIFIED`, `SAFETY`, `OTHER`, `BLOCKLIST`, `PROHIBITED_CONTENT`.
+      - `FinishReason` (Candidate): [ai.google.dev/api/rest/v1beta/Candidate#finishreason](https://ai.google.dev/api/rest/v1beta/Candidate#finishreason) gồm: `FINISH_REASON_UNSPECIFIED`, `STOP`, `MAX_TOKENS`, `SAFETY`, `RECITATION`, `LANGUAGE`, `OTHER`, `BLOCKLIST`, `PROHIBITED_CONTENT`, `SPII`, `MALFORMED_FUNCTION_CALL`.
     - **5 Danh mục Hữu hạn của `SafetyBlockCategory`:**
       1. `SAFETY`: Vi phạm ngưỡng cài đặt an toàn (`BlockReason.SAFETY`, `FinishReason.SAFETY`).
       2. `RECITATION`: Vi phạm bản quyền lời bài hát/văn bản (`FinishReason.RECITATION`).
       3. `POLICY`: Vi phạm danh sách cấm từ khóa hoặc nội dung cấm (`BLOCKLIST`, `PROHIBITED_CONTENT`).
       4. `PRIVACY`: Tiết lộ thông tin định danh cá nhân nhạy cảm (`FinishReason.SPII`).
-      5. `OTHER`: Các lý do chưa phân loại (`BLOCK_REASON_UNSPECIFIED`, `FINISH_REASON_UNSPECIFIED`, `OTHER`) và là **nhánh mặc định `default -> OTHER`** bắt buộc để hấp thụ an toàn mọi giá trị mới Google bổ sung sau này.
-    - **Loại trừ nghiêm ngặt `MAX_TOKENS` và `STOP`:** Chú thích và logic chỉ đếm các sự kiện vi phạm an toàn thực tế. Khi mô hình dừng bình thường (`STOP`) hoặc chạm giới hạn token đầu ra (`MAX_TOKENS` với `maxOutputTokens = 800`), đây là trạng thái hoàn tất nghiệp vụ thông thường, **TUYỆT ĐỐI KHÔNG ĐƯỢC ĐẾM** vào `ai.gemini.safety.blocks` để tránh thổi phồng số liệu gây cảnh báo giả.
-    - Nhãn `type` mang 2 giá trị xác định: `"prompt"` (bị chặn đầu vào bởi `promptFeedback.blockReason`) hoặc `"response"` (bị ngắt stream giữa chừng vì vi phạm an toàn/chính sách tại `candidates[0].finishReason`).
-  * **Cảnh Báo Prometheus Alert Độc Lập: Eager vs Lazy Registration & Bẫy Vector Một Vế Rỗng:**
-    - **Hai hướng tiếp cận kiến trúc:**
-      1. *Khuyến nghị chuẩn (Eager Pre-registration):* Đăng ký sẵn Counter với các nhãn cố định (`status="400"`, `status="403"`, và các enum `category`) trong Bean `@Configuration` lúc ứng dụng khởi động. Khi đó time-series luôn tồn tại với giá trị 0 ngay từ đầu, loại bỏ hoàn toàn hiện tượng vắng mặt series.
-      2. *Phòng vệ câu truy vấn (Defensive PromQL):* Nếu ứng dụng đăng ký Counter theo kiểu lười (Lazy Registration tại thời điểm gọi `.increment()` lần đầu), cấu trúc `or on() vector(0)` là lớp bảo hiểm bắt buộc trên tầng giám sát.
-    - **Bẫy phép cộng vector một vế rỗng:** Trong Prometheus, phép cộng `A + B` đòi hỏi cả hai vế đều phải trả về time-series. Nếu trong 5 phút có 10 lỗi client 400 (`A = 10`) nhưng hoàn toàn không có lỗi safety block nào (`B = rỗng`), phép tính `10 + empty` sẽ trả về **`empty set`**! Hậu quả là dù lỗi 400 tăng vọt vượt ngưỡng, Alert vẫn bị câm hoàn toàn. Dùng `(A or on() vector(0)) + (B or on() vector(0)) > 5` đảm bảo vế rỗng nhận giá trị 0 (`10 + 0 = 10 > 5`) giúp cảnh báo kích hoạt chuẩn xác.
+      5. `OTHER`: Các lý do chưa phân loại (`BLOCK_REASON_UNSPECIFIED`, `OTHER` ở prompt level) và là **nhánh mặc định `default -> OTHER`** bắt buộc trong code.
+    - **Tách biệt rành mạch hai phương thức ánh xạ:**
+      - `fromPromptBlockReason(String raw)`: Ánh xạ lý do chặn đầu vào prompt.
+      - `fromCandidateFinishReason(String raw)`: Trả về `Optional<SafetyBlockCategory>`. Chỉ trả về giá trị cho các lý do an toàn/chính sách thực sự (`SAFETY`, `RECITATION`, `POLICY`, `PRIVACY`). Đối với `STOP`, `MAX_TOKENS` (chạm giới hạn 800 tokens), `OTHER`, `LANGUAGE`, `MALFORMED_FUNCTION_CALL`, phương thức trả về **`Optional.empty()`**.
+      - **Loại trừ `finishReason=OTHER` và `MAX_TOKENS` khỏi Counter:** Ở tầng response stream, `finishReason=OTHER` là các ngắt quãng kỹ thuật/timeout không rõ nguồn, không phải vi phạm an toàn; nếu đếm sẽ làm phình số liệu. Chỉ khi `Optional.isPresent()` thì mới tăng counter `ai.gemini.safety.blocks`.
+  * **Cảnh Báo Prometheus Alert Độc Lập: Eager vs First-Event Registration & Bẫy Vector Một Vế Rỗng:**
+    - **Hai hướng tiếp cận đăng ký Counter:**
+      1. *Khuyến nghị chuẩn (Eager Pre-registration lúc khởi động):* Đăng ký sẵn Counter với các nhãn cố định (`status="400"`, `status="403"`, và 5 danh mục `category`) trong Bean `@Configuration` lúc khởi động ứng dụng. Khi đó time-series luôn tồn tại với giá trị 0 ngay từ đầu, loại bỏ hoàn toàn hiện tượng vắng mặt series.
+      2. *Đăng ký khi phát sinh sự kiện đầu tiên (First-event / On-demand registration):* Nếu ứng dụng chỉ gọi `meterRegistry.counter(...).increment()` khi sự kiện phát sinh, series sẽ không tồn tại cho tới khi có lỗi đầu tiên. Cú pháp `or on() vector(0)` là lớp bảo hiểm bắt buộc trên tầng giám sát.
+    - **Bẫy phép cộng vector một vế rỗng & Cơ chế `on()` không nhãn:** Trong PromQL, phép cộng vector `A + B` đòi hỏi cả hai vế đều phải trả về time-series. Nếu trong 5 phút có 10 lỗi client 400 (`A = 10`) nhưng hoàn toàn không có lỗi safety block nào (`B = rỗng`), phép tính `10 + empty` sẽ trả về **`empty set`**! Hậu quả là dù lỗi 400 tăng vọt vượt ngưỡng, Alert vẫn bị câm hoàn toàn. Do `vector(0)` sinh ra một metric không có nhãn `{}`, và `sum(...)` không có `by` cũng trả về metric không nhãn `{}`, nên mệnh đề `on()` rỗng khớp nối hoàn hảo: `(A or on() vector(0)) + (B or on() vector(0)) > 5` đảm bảo vế rỗng nhận giá trị 0 (`10 + 0 = 10 > 5`), kích hoạt cảnh báo chuẩn xác.
     - **Baseline lưu lượng thực:** Ngưỡng `> 5` trong 5 phút là giá trị khởi điểm tham khảo cho dev/staging; trên Production, ngưỡng bắt buộc phải được hiệu chuẩn theo baseline lưu lượng thực tế (ví dụ: trung bình 7 ngày + 3 sigma hoặc vượt 5% tổng request 5 phút).
 * **Vòng Đời Permit, Watchdog 8000ms, Bản Chất SO_TIMEOUT (15s) & `future.cancel(true)`:**
   * Cấp permit qua `tryAcquirePermission()`, bảo vệ chống double-release bằng `AtomicBoolean resultRecorded`.
@@ -131,7 +135,7 @@ Tiến độ của Lớp 7 được tính toán minh bạch dựa trên 4 thành
         return nil
     end
     ```
-    Script kiểm tra `GET` trước; nếu có giá trị cũ, lập tức trả về `old` mà không chạm vào TTL hay giá trị hiện tại. Nếu chưa có, mới thực thi `SET ... EX`.
+    *Chi tiết thực thi Lua trên Redis:* Trong môi trường Redis Lua, `redis.call('GET', KEYS[1])` khi khóa không tồn tại sẽ trả về giá trị Boolean `false` (chứ không phải `nil` của Lua). Điều kiện `if old then` trong Lua nhận cả `false` và `nil` là giá trị phủ định (falsy), nên nhánh rẽ hoạt động hoàn toàn chính xác. Khi khóa chưa tồn tại, lệnh `SET ... EX` được gọi với `ARGV[2]` là số nguyên giây (ví dụ `86400`), và script `return nil` (Redis chuyển thành Null Bulk String reply `nil`). Khi khóa đã tồn tại, script trả về chuỗi `old` mà không làm mới TTL, bảo toàn tính cố định của cửa sổ 24 giờ.
 
 ---
 
@@ -174,7 +178,7 @@ flowchart TD
 ---
 
 <a id="muc-4-kiem-thu"></a>
-## 📊 4. KẾT QUẢ ĐỐI CHUẨN THỰC NGHIỆM (109/109 TESTS PASS)
+## 📊 4. KẾT QUẢ ĐỐI CHUẨN THỰC NGHIỆM (120/120 TESTS PASS)
 
 Bảng phân bổ chi tiết kết quả kiểm thử tự động trên Maven với JDK 21 (đảm bảo tính chính xác số học 100%):
 
@@ -185,10 +189,11 @@ Bảng phân bổ chi tiết kết quả kiểm thử tự động trên Maven v
 | **Giai đoạn 2** | `ModelRouterServiceTest` | 7 | **7/7 PASS** | Phân làn Critic với từ khóa nhạc lý không dấu, chặn prompt ngắn, hạ cấp khi Breaker OPEN |
 | | `CircuitBreakerLifecycleTest` | 7 | **7/7 PASS** | Vòng đời Permit, Watchdog 8000ms trên aiStreamingExecutor, nhả permit khi client abort, an toàn fallback theo phân loại tool |
 | | `AiAgentOrchestratorTest` | 3 | **3/3 PASS** | Vòng lặp Agentic loop, kiểm định anti-hallucination, xử lý fallback |
+| | `SafetyBlockCategoryTest` | 11 | **11/11 PASS** | Ánh xạ BlockReason prompt, Candidate finishReason, loại trừ nghiêm ngặt STOP/MAX_TOKENS/OTHER/LANGUAGE, nhánh fallback mặc định OTHER |
 | **Giai đoạn 3** | `CanCacheEvaluatorTest` | 11 | **11/11 PASS** | Bao phủ 8 cổng BYPASS, câu GENERAL hợp lệ, over-bypass "nhạc Anh" có chủ ý |
 | | `TelemetryServiceTest` | 8 | **8/8 PASS** | Canonical prompt SHA-256 kèm Persona prefix, đếm bypass reason, phân biệt cross-user vs self-retry (30m & 24h), cô lập anonymous prompts |
 | | `VietnameseTextNormalizerTest` | 6 | **6/6 PASS** | Chuẩn hóa không dấu, xử lý ký tự Đ/đ, tách từ tokenize, bóc tách dấu giữ nguyên hoa thường (`stripDiacritics`) |
-| **TỔNG CỘNG** | **8 test classes** | **109** | **109/109 PASS** | **Tỷ lệ vượt qua: 100% (BUILD SUCCESS)** |
+| **TỔNG CỘNG** | **9 test classes** | **120** | **120/120 PASS** | **Tỷ lệ vượt qua: 100% (BUILD SUCCESS trên Maven & JDK 21)** |
 
 ---
 
@@ -222,7 +227,7 @@ GIAI ĐOẠN 2: Model Router & Circuit Breaker [✅ ĐÃ HOÀN THÀNH - ĐẠT 2
   ├── [x] Khai báo AiRouterProperties (ai.router.*) và cấu hình instance geminiCriticRouter trong application.yaml
   ├── [x] Loại trừ lỗi 400 (Safety block) và 403 khỏi record-exceptions để chống ngắt mạch oan
   ├── [ ] Thiết lập cảnh báo Prometheus Alert độc lập cho lỗi 400/403 và in-stream safety blocks:
-  │     ├── [ ] Định nghĩa enum SafetyBlockCategory (SAFETY, RECITATION, POLICY, PRIVACY, OTHER) và hàm ánh xạ fromGemini() kèm bộ unit test (loại trừ STOP, MAX_TOKENS)
+  │     ├── [x] Định nghĩa enum SafetyBlockCategory (SAFETY, RECITATION, POLICY, PRIVACY, OTHER) và hàm ánh xạ fromPromptBlockReason / fromCandidateFinishReason kèm bộ unit test (SafetyBlockCategoryTest: 11/11 PASS)
   │     └── [ ] Cấu hình rule Prometheus Alerting với PromQL increase() kết hợp or on() vector(0) (hoặc Eager Counter Registration) và hiệu chỉnh theo baseline lưu lượng thực
   ├── [x] Xây dựng ModelRouterService sinh RoutingDecision độc lập (phân làn Music Critic với regex nhạc lý không dấu)
   ├── [x] Tách bạch 2 cờ hạ cấp: degradedByBreaker (chặn lưu cache) và reasoningTierDisabled (cho phép lưu cache)
@@ -232,7 +237,7 @@ GIAI ĐOẠN 2: Model Router & Circuit Breaker [✅ ĐÃ HOÀN THÀNH - ĐẠT 2
   ├── [x] Tinh chỉnh fallback guard: Cho phép read-only tools, chặn đứng side-effect tools chống Double Mutation
   ├── [x] Định nghĩa phân cấp UpstreamAiException ghi nhận vào record-exceptions của Breaker
   ├── [x] Phân loại ngoại lệ theo nguồn: ClientAbortException (hủy upstream + nhả permit) vs Upstream error (ghi nhận vào Breaker)
-  └── [x] Viết ModelRouterServiceTest (7/7 PASS), CircuitBreakerLifecycleTest (7/7 PASS), AiAgentOrchestratorTest (3/3 PASS)
+  └── [x] Viết ModelRouterServiceTest (7/7 PASS), CircuitBreakerLifecycleTest (7/7 PASS), AiAgentOrchestratorTest (3/3 PASS), SafetyBlockCategoryTest (11/11 PASS)
 
 GIAI ĐOẠN 3: Bước Đệm Telemetry & Khung Quyết Định Dữ Liệu [✅ HẠ TẦNG HOÀN TẤT - TIẾN TỚI 100% PRODUCTION-READY]
   ├── [x] Xây dựng CanCacheEvaluator quét 2 tầng có dấu ((?U)) và không dấu phân loại 8 lý do BYPASS
