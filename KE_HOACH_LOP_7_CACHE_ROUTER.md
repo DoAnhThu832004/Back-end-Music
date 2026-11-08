@@ -1,7 +1,7 @@
 # ⚡ KẾ HOẠCH NÂNG CẤP LỚP 7: CACHE & MODEL ROUTER
 > **Dự án:** `identity-service-main` (Spring Boot 3 + Google Gemini) & Android Client App  
 > **Mục tiêu:** Nâng cấp Lớp 7 từ **25%** lên **75% Code-Complete, Telemetry Instrumented** và chuẩn bị nghiệm thu **100% Production-Ready** qua dữ liệu thực tế  
-> **Trạng thái:** 🚀 *Hiệu chuẩn lần 21 — Nguồn Sự Thật Duy Nhất (Single Source of Truth) cho tiến độ, ma trận 120 bài test tự động (100% Pass Rate: GĐ1: 67, GĐ2: 17, GĐ3: 36), và checklist công việc. Nhóm toàn bộ checklist [x] hoàn thành lên trước trong Giai đoạn 3, chuyển [ ] Alerting xuống nhóm mở, làm rõ giả định tiền điều kiện fromPromptBlockReason, xác nhận rà soát deprecation fromGemini(), chuẩn hóa đối chiếu Gemini API v1beta & gemini-3.5 cần xác nhận khi chạy thực tế).*
+> **Trạng thái:** 🚀 *Hiệu chuẩn lần 22 — Nguồn Sự Thật Duy Nhất (Single Source of Truth) cho tiến độ, ma trận 125 bài Unit Test (100% Pass Rate: GĐ1: 67, GĐ2: 24, GĐ3: 34) + 3 bài kiểm thử tích hợp DB Testcontainers MySQL (Tổng 128 tests), và checklist công việc. Khóa dứt điểm logic loại trừ get_top_trending_songs ở Bước 8 qua canSaveToSemanticCache(), hoàn tất AiChatRepositoryIntegrationTest với MySQL 8.0, đồng bộ PromQL Alerting lỗi 400/403 (ai_gemini_client_errors_total), làm rõ phân bổ test trong AiAgentOrchestratorTest (10 tests: 1 khai báo tool + 3 allowlist + 1 intent + 5 canSaveToSemanticCache), và thiết lập lộ trình 3 thứ tự ưu tiên vận hành).*
 
 ---
 
@@ -17,9 +17,9 @@ Tiến độ của Lớp 7 được tính toán minh bạch dựa trên 4 thành
 | :--- | :---: | :---: | :--- |
 | **Traditional Data Cache** | 25% | **25% (Sẵn có)** | Caffeine cache cho top trending SQL, In-memory ConcurrentMap cho Vector bài hát |
 | **Fast-Path Command Engine** | 25% | **+25% (Lũy kế 50%)** | **ĐÃ HOÀN THÀNH & NGHIỆM THU (67 tests):** Regex Two-tier có/không dấu, unaccented fallback, "bài tiếp theo", chạy trước Session Lock, đồng bộ Android Client, `DATETIME(6)` microsecond precision, `@Transactional saveFastPathMessages`, Dual Tie-Breaker theo String, 5 ca test phủ định không dấu |
-| **Dynamic Model Router & Fallback** | 25% | **+25% (Lũy kế 75%)** | **ĐÃ HOÀN TẤT MÃ NGUỒN NGHIỆP VỤ (17 tests, đang mở TTFT Staging):** `ModelRouterService` (7 tests), Resilience4j `geminiCriticRouter` (loại trừ 400/403 safety khỏi Breaker, 7 tests), `AiAgentOrchestrator` (3 tests), watchdog 8000ms trên `aiStreamingExecutor` (socket 15s), phân cấp `UpstreamAiException`, fallback an toàn phân biệt read-only vs side-effect |
-| **Telemetry, Observability & Bounded Safety Metrics** | 25% | **Hạ tầng hoàn tất (36 tests)<br/>Đang mở Alerting & Đo thực tế** | **ĐÃ HOÀN TẤT MÃ NGUỒN (36 tests):** `CanCacheEvaluator` (11 tests), `TelemetryService` (8 tests), `VietnameseTextNormalizer` (6 tests), mã nguồn chuẩn hóa `SafetyBlockCategory` (11 tests); **100% Production-Ready** sẽ được ký duyệt sau khi hoàn tất đo đạc thực tế và cấu hình Alerting |
-| **TỔNG CỘNG** | **100%** | **75% Code-Complete, Telemetry Instrumented** | **120/120 Unit & Integration Tests Passed (100% Pass Rate theo ma trận tại Mục 4). Sẵn sàng giai đoạn đo lường thực tế.** |
+| **Dynamic Model Router & Fallback** | 25% | **+25% (Lũy kế 75%)** | **ĐÃ HOÀN TẤT MÃ NGUỒN NGHIỆP VỤ (24 tests, đang mở TTFT Staging):** `ModelRouterService` (7 tests), Resilience4j `geminiCriticRouter` (loại trừ 400/403 safety khỏi Breaker, 7 tests), `AiAgentOrchestratorTest` (10 tests: 1 khai báo tool + 3 allowlist + 1 intent + 5 ca canSaveToSemanticCache Bước 8), watchdog 8000ms trên `aiStreamingExecutor` (socket 15s), phân cấp `UpstreamAiException`, fallback an toàn phân biệt read-only vs side-effect |
+| **Telemetry, Observability & Bounded Safety Metrics** | 25% | **Hạ tầng hoàn tất (34 tests + 3 DB tests)<br/>Đang mở Alerting & Đo thực tế** | **ĐÃ HOÀN TẤT MÃ NGUỒN (34 tests + 3 DB tests):** `CanCacheEvaluator` (9 tests), `TelemetryService` (8 tests), `VietnameseTextNormalizer` (6 tests), mã nguồn chuẩn hóa `SafetyBlockCategory` (11 tests), `AiChatRepositoryIntegrationTest` (3 tests MySQL Testcontainers); **100% Production-Ready** sẽ được ký duyệt sau khi hoàn tất đo đạc thực tế và cấu hình Alerting |
+| **TỔNG CỘNG** | **100%** | **75% Code-Complete, Telemetry Instrumented** | **125/125 Unit Tests Passed (100% Pass Rate) + 3 Testcontainers Tests sẵn sàng cho CI/Docker (Tổng 128 tests theo ma trận tại Mục 4). Sẵn sàng giai đoạn đo lường thực tế.** |
 
 ---
 
@@ -189,7 +189,7 @@ Bảng phân bổ chi tiết kết quả kiểm thử tự động trên Maven v
 | | `AiChatControllerTest` | 9 | **9/9 PASS** | Fast-Path Turn 1 & Turn 2+, Player Transport, Legacy client fallback, IDOR check, Session Lock isolation |
 | **Giai đoạn 2** | `ModelRouterServiceTest` | 7 | **7/7 PASS** | Phân làn Critic với từ khóa nhạc lý không dấu, chặn prompt ngắn, hạ cấp khi Breaker OPEN |
 | | `CircuitBreakerLifecycleTest` | 7 | **7/7 PASS** | Vòng đời Permit, Watchdog 8000ms trên aiStreamingExecutor, nhả permit khi client abort, an toàn fallback theo phân loại tool |
-| | `AiAgentOrchestratorTest` | 10 | **10/10 PASS** | Tool Declarations (5), Anti-Hallucination & Allowlist (3), Intent Classifier (1), Điều kiện lưu Semantic Cache Bước 8 (!trending, !PII, !fallback, !breaker, !side-effects) (5) |
+| | `AiAgentOrchestratorTest` | 10 | **10/10 PASS** | Khai báo 5 Tool chuẩn hóa (1 test), Anti-Hallucination & Allowlist (3 tests), Intent Classifier (1 test), Điều kiện lưu Semantic Cache Bước 8 (!trending, !PII, !fallback, !breaker, !side-effects) (5 tests) |
 | **Giai đoạn 3** | `CanCacheEvaluatorTest` | 9 | **9/9 PASS** | Bao phủ 8 cổng BYPASS, câu GENERAL hợp lệ, over-bypass "nhạc Anh" có chủ ý |
 | | `TelemetryServiceTest` | 8 | **8/8 PASS** | Canonical prompt SHA-256 kèm Persona prefix, đếm bypass reason, phân biệt cross-user vs self-retry (30m & 24h), cô lập anonymous prompts |
 | | `VietnameseTextNormalizerTest` | 6 | **6/6 PASS** | Chuẩn hóa không dấu, xử lý ký tự Đ/đ, tách từ tokenize, bóc tách dấu giữ nguyên hoa thường (`stripDiacritics`) |
@@ -224,7 +224,7 @@ HẬU GIAI ĐOẠN 1: Tinh chỉnh Database & Kích hoạt Metrics [✅ ĐÃ HO�
   ├── [x] Gom lưu DB vào phương thức @Transactional saveFastPathMessages trong AiChatSessionService
   └── [x] Gắn Timer.Sample (ai.latency.fastpath) và counter (ai.fastpath.hits) quanh handleFastPathExecution
 
-GIAI ĐOẠN 2: Dynamic Model Router & Circuit Breaker [✅ HOÀN TẤT MÃ NGUỒN NGHIỆP VỤ - 17/17 TESTS PASS - ĐANG MỞ TTFT STAGING]
+GIAI ĐOẠN 2: Dynamic Model Router & Circuit Breaker [✅ HOÀN TẤT MÃ NGUỒN NGHIỆP VỤ - 24/24 TESTS PASS - ĐANG MỞ TTFT STAGING]
   ├── [x] Khai báo io.github.resilience4j:resilience4j-spring-boot3:2.2.0 và spring-boot-starter-aop trong pom.xml
   ├── [x] Khai báo AiRouterProperties (ai.router.*) và cấu hình instance geminiCriticRouter trong application.yaml
   ├── [x] Loại trừ lỗi 400 (Safety block) và 403 khỏi record-exceptions để chống ngắt mạch oan
@@ -236,7 +236,7 @@ GIAI ĐOẠN 2: Dynamic Model Router & Circuit Breaker [✅ HOÀN TẤT MÃ NGU�
   ├── [x] Tinh chỉnh fallback guard: Cho phép read-only tools, chặn đứng side-effect tools chống Double Mutation
   ├── [x] Định nghĩa phân cấp UpstreamAiException ghi nhận vào record-exceptions của Breaker
   ├── [x] Phân loại ngoại lệ theo nguồn: ClientAbortException (hủy upstream + nhả permit) vs Upstream error (ghi nhận vào Breaker)
-  └── [x] Viết ModelRouterServiceTest (7/7 PASS), CircuitBreakerLifecycleTest (7/7 PASS), AiAgentOrchestratorTest (3/3 PASS) [Tổng: 17/17 PASS]
+  └── [x] Viết ModelRouterServiceTest (7/7 PASS), CircuitBreakerLifecycleTest (7/7 PASS), AiAgentOrchestratorTest (10/10 PASS) [Tổng: 24/24 PASS]
 
 GIAI ĐOẠN 3: Telemetry, Observability & Bounded Safety Metrics [🔬 HOÀN TẤT MÃ NGUỒN (34 TESTS) - ĐANG MỞ ĐO THỰC TẾ & ALERTING]
   ├── [x] Xây dựng CanCacheEvaluator quét 2 tầng có dấu ((?U)) và không dấu phân loại 8 lý do BYPASS
@@ -278,14 +278,15 @@ Sau 21 vòng lặp tinh chỉnh, toàn bộ chu kỳ hiệu chỉnh văn bản t
 
 ### 🎯 Thứ tự ưu tiên 2 (Môi trường Staging — [⏳ ĐANG MỞ]):
 * **Cấu hình Prometheus Alerting:**
-  - Triển khai alert rule `AiGeminiSafetyOrClientErrorsSpike` giám sát đột biến lỗi 400 (Safety Block) và 403.
-  - Sử dụng biểu thức PromQL chuẩn hóa:
+  - Triển khai alert rule `AiGeminiSafetyOrClientErrorsSpike` giám sát đột biến lỗi 400 (Safety Block) và 403 từ upstream Gemini.
+  - Sử dụng biểu thức PromQL chuẩn hóa (khớp 100% với file Thiết Kế Chi Tiết Mục 4.3 & 7.2):
     ```promql
-    (sum(increase(http_server_requests_seconds_count{status=~"400|403", uri="/api/v1/ai/chat/stream"}[5m])) or on() vector(0))
+    (sum(increase(ai_gemini_client_errors_total{status=~"400|403"}[5m])) or on() vector(0))
     +
     (sum(increase(ai_gemini_safety_blocks_total[5m])) or on() vector(0))
-    > 10
+    > 5
     ```
+    *(Lưu ý kỹ thuật: Không sử dụng `http_server_requests_seconds_count` vì đó là metric của Tomcat đo phía client – vốn luôn trả về HTTP 200 OK khi khởi tạo luồng SSE; các lỗi upstream từ Gemini xảy ra bất đồng bộ bên trong `aiStreamingExecutor` và được ghi nhận chuẩn xác vào `ai_gemini_client_errors_total`).*
 * **Hiệu chuẩn First-Token Watchdog dưới áp lực Thinking Budget:**
   - Đẩy code lên Staging và dựng Grafana Dashboard theo dõi timer `ai.latency.ttft` của `gemini-2.5-pro`.
   - Thực hiện bài kiểm thử tải vừa phải với các câu hỏi nhạc lý phức tạp (phân tích hòa âm, phức điệu) để khảo sát xem Thinking Budget của mô hình Pro đẩy phân phối p95/p99 lên bao nhiêu giây.
