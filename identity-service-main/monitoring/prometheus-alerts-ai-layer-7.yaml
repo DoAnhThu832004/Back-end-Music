@@ -1,0 +1,26 @@
+groups:
+  - name: ai-layer-7-alerts
+    rules:
+      - alert: AiGeminiSafetyOrClientErrorsSpike
+        expr: >
+          (sum(increase(ai_gemini_client_errors_total{status=~"400|403"}[5m])) or on() vector(0))
+          +
+          (sum(increase(ai_gemini_safety_blocks_total[5m])) or on() vector(0))
+          > 5
+        for: 2m
+        labels:
+          severity: warning
+          layer: layer-7-model-router
+        annotations:
+          summary: "Đột biến lỗi Gemini Client Errors (400/403) hoặc Safety Blocks"
+          description: "Phát hiện > 5 lỗi client hoặc safety blocks trong 5 phút từ upstream Gemini API. Cần kiểm tra prompt hoặc nội dung kiểm duyệt."
+
+      - alert: AiModelRouterCircuitBreakerOpen
+        expr: resilience4j_circuitbreaker_state{name="geminiCriticRouter",state="open"} == 1
+        for: 30s
+        labels:
+          severity: critical
+          layer: layer-7-model-router
+        annotations:
+          summary: "Circuit Breaker geminiCriticRouter đang ở trạng thái OPEN"
+          description: "Tỷ lệ lỗi upstream vượt ngưỡng 50%, hệ thống tự động hạ cấp traffic sang FAST_TIER để bảo vệ trải nghiệm người dùng."

@@ -14,5 +14,5 @@ public class AiRouterProperties {
     private boolean reasoningTierEnabled = true;
     private String fastTierModel = "gemini-3.5-flash-lite";
     private String reasoningTierModel = "gemini-2.5-pro";
-    private long firstTokenTimeoutMs = 8000;
+    private long firstTokenTimeoutMs = 11000;
 }

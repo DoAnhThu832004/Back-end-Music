@@ -42,7 +42,7 @@ ai:
     reasoning-tier-enabled: ${AI_REASONING_TIER_ENABLED:true}
     fast-tier-model: ${GEMINI_FAST_MODEL:${gemini.model:gemini-3.5-flash-lite}}
     reasoning-tier-model: ${GEMINI_REASONING_MODEL:gemini-2.5-pro}
-    first-token-timeout-ms: 8000
+    first-token-timeout-ms: ${AI_FIRST_TOKEN_TIMEOUT_MS:11000}
 
 resilience4j:
   circuitbreaker:

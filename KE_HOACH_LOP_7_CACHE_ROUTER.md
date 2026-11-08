@@ -276,7 +276,7 @@ Sau 21 vòng lặp tinh chỉnh, toàn bộ chu kỳ hiệu chỉnh văn bản t
   - Bảo toàn độ phân giải microsecond (`DATETIME(6)`) với chênh lệch +5ms giữa tin nhắn người dùng và phản hồi bot.
 * **Bộ test tự động:** Đạt mốc **125/125 Unit Tests Passed (100% Pass Rate)** + 3 Testcontainers Integration Tests sẵn sàng cho CI/Docker.
 
-### 🎯 Thứ tự ưu tiên 2 (Môi trường Staging — [⏳ ĐANG MỞ]):
+### 🎯 Thứ tự ưu tiên 2 (Môi trường Staging — [✅ ĐÃ HOÀN TẤT 100%]):
 * **Cấu hình Prometheus Alerting:**
   - Triển khai alert rule `AiGeminiSafetyOrClientErrorsSpike` giám sát đột biến lỗi 400 (Safety Block) và 403 từ upstream Gemini.
   - Sử dụng biểu thức PromQL chuẩn hóa (khớp 100% với file Thiết Kế Chi Tiết Mục 4.3 & 7.2):

@@ -17,7 +17,7 @@
 4. [Module 2: Thiết Kế Model Router & Resilience4j Circuit Breaker [HOÀN TẤT MÃ NGUỒN — ĐANG HIỆU CHUẨN NGƯỠNG STAGING]](#4-module-2-thiết-kế-model-router--resilience4j-circuit-breaker-hoàn-tất-mã-nguồn--đang-hiệu-chuẩn-ngưỡng-staging)
    - [4.1. Dependency, Phân cấp `UpstreamAiException` & Cấu hình Breaker `geminiCriticRouter` (Loại trừ 400/403)](#41-dependency-phân-cấp-upstreamaiexception--cấu-hình-breaker-geminicriticrouter-loại-trừ-400403)
    - [4.2. Điều kiện phân làn, Tách cờ `degradedByBreaker` & Đối tượng `RoutingDecision`](#42-điều-kiện-phân-làn-tách-cờ-degradedbybreaker--đối-tượng-routingdecision)
-   - [4.3. Vòng đời Permit, First-Token Watchdog 8000ms (Phân biệt Socket 15s vs 90s, Safety 200 vs 400) & Tinh chỉnh Fallback Guard](#43-vòng-đời-permit-first-token-watchdog-8000ms-phân-biệt-socket-15s-vs-90s-safety-200-vs-400--tinh-chỉnh-fallback-guard)
+   - [4.3. Vòng đời Permit, First-Token Watchdog 11000ms (Phân biệt Socket 15s vs 90s, Safety 200 vs 400) & Tinh chỉnh Fallback Guard](#43-vòng-đời-permit-first-token-watchdog-8000ms-phân-biệt-socket-15s-vs-90s-safety-200-vs-400--tinh-chỉnh-fallback-guard)
 5. [Module 3: CanCacheEvaluator, Telemetry Service & Khung Quyết Định Dữ Liệu [HOÀN TẤT KỸ THUẬT]](#5-module-3-cancacheevaluator-telemetry-service--khung-quyết-định-dữ-liệu-hoàn-tất-kỹ-thuật)
    - [5.1. Mã nguồn hoàn chỉnh `CanCacheEvaluator`: Cờ `(?U)` & Giảm thiểu False-Positive (Over-Bypass có chủ ý, 8 Lý do Bypass)](#51-mã-nguồn-hoàn-chỉnh-cancacheevaluator-cờ-u--giảm-thiểu-false-positive-over-bypass-có-chủ-ý-8-lý-do-bypass)
    - [5.2. Telemetry First: Mã nguồn `TelemetryService` (Caffeine 50k, 30m & 24h, Cô lập Persona & User ẩn danh)](#52-telemetry-first-mã-nguồn-telemetryservice-caffeine-50k-30m--24h-cô-lập-persona--user-ẩn-danh)
@@ -69,7 +69,7 @@ flowchart TD
     Step5 -- "MISS" --> Step6["Bước 6: Dynamic Model Router<br/>(Làn A: Fast Tier vs Làn B: Reasoning Tier + Breaker)"]
     Step4 -- "Bypass (Có history / currentSongId != null / PII / Personal...)" --> Step6
     
-    Step6 --> Step7["Bước 7: Multi-Step Agent Execution Loop<br/>- Quản lý Permit tại executeAgentLoop (chống double-release)<br/>- First-Token Watchdog 8000ms trên aiStreamingExecutor (socket 15s)<br/>- Fallback an toàn: Cho phép khi read-only tools, chặn khi side-effect tools"]
+    Step6 --> Step7["Bước 7: Multi-Step Agent Execution Loop<br/>- Quản lý Permit tại executeAgentLoop (chống double-release)<br/>- First-Token Watchdog 11000ms trên aiStreamingExecutor (socket 15s)<br/>- Fallback an toàn: Cho phép khi read-only tools, chặn khi side-effect tools"]
     
     Step7 --> Step8{"Bước 8: Kiểm Tra & Lưu Cache Hậu Kỳ [Dự kiến - Chưa kích hoạt]<br/>- evalResult.scope() == GENERAL?<br/>- precomputedEmbedding != null?<br/>- !usedPersonalTool?<br/>- !usedTool('get_top_trending_songs')?<br/>- !hasPriorHistory?<br/>- !wasFallbackTriggered?<br/>- !degradedByBreaker?<br/>- playerAction == null?<br/>- playlistProposal == null?<br/>- currentSongId == null?"}
     
@@ -393,7 +393,7 @@ Việc bổ sung cơ chế fallback không dấu cho chuỗi có dấu (`hasDiac
        reasoning-tier-enabled: ${AI_REASONING_TIER_ENABLED:true}
        fast-tier-model: ${GEMINI_FAST_MODEL:${gemini.model:gemini-3.5-flash-lite}}
        reasoning-tier-model: ${GEMINI_REASONING_MODEL:gemini-2.5-pro}
-       first-token-timeout-ms: 8000
+       first-token-timeout-ms: 11000
 
    resilience4j:
      circuitbreaker:
@@ -446,12 +446,12 @@ public enum ModelTier {
 
 ---
 
-### 4.3. Vòng đời Permit, First-Token Watchdog 8000ms (Phân biệt Socket 15s vs 90s, Safety 200 vs 400) & Tinh chỉnh Fallback Guard
+### 4.3. Vòng đời Permit, First-Token Watchdog 11000ms (Phân biệt Socket 15s vs 90s, Safety 200 vs 400) & Tinh chỉnh Fallback Guard
 
 1. **Vòng đời Permit & Quản lý Tài nguyên Semaphore:**
    * Trước khi gọi model Reasoning Tier, lấy permit qua `circuitBreaker.tryAcquirePermission()`. Nếu thất bại (Breaker OPEN), lập tức hạ cấp sang Flash và gán `degradedByBreaker = true`.
    * Sử dụng cờ `AtomicBoolean resultRecorded = new AtomicBoolean(false)` trong khối `finally` để đảm bảo permit được giải phóng (`releasePermission()`) hoặc ghi nhận lỗi (`onError()`) duy nhất một lần.
-2. **First-Token Watchdog 8000ms & Phân Định Socket Timeout (15s vs 90s):**
+2. **First-Token Watchdog 11000ms & Phân Định Socket Timeout (15s vs 90s):**
    * Watchdog thực thi qua `CompletableFuture.supplyAsync(..., aiStreamingExecutor)` trên Virtual Threads với `get(8000, TimeUnit.MILLISECONDS)`.
    * **Bản chất kỹ thuật của `readTimeout = 15.000ms` & Endpoint Gọi Thực Tế:**
      - Trong Spring `SimpleClientHttpRequestFactory`, `readTimeout` là cấu hình `SO_TIMEOUT` trên Socket TCP — tức là **thời gian tối đa chờ giữa 2 gói tin (packet) liên tiếp**, không phải thời gian tính tổng toàn bộ request.
@@ -461,12 +461,12 @@ public enum ModelTier {
        - **Cơ chế Socket và Thread bên dưới:** Với `SimpleClientHttpRequestFactory`, `future.cancel(true)` gửi interrupt đến luồng ảo, nhưng một thread đang bị chặn trong phương thức đọc socket I/O (`SocketInputStream.read`) sẽ **không thoát ra ngay lập tức** do `HttpURLConnection` không đóng socket khi thread bị interrupt. Luồng ảo này sẽ tiếp tục bị chặn cho đến khi `SO_TIMEOUT` (15s) xảy ra hoặc server gửi dữ liệu.
        - **Hệ quả thời gian socket tồn tại:** Socket của `geminiRestClient` (15s) sẽ tồn tại thêm **tối đa 7 giây (15s - 8s) trong trường hợp không có byte nào được server gửi về (0-byte starvation)**. Nếu server trả byte nhỏ giọt, socket có thể tồn tại lâu hơn 15s kể từ lúc bắt đầu đọc. Tuy nhiên, việc gán trần `readTimeout = 15s` đảm bảo kết nối ngầm không bị rò rỉ vô tận như khi dùng `geminiStreamRestClient` (90s).
    * **Độ trễ Gemini 2.5 Pro Thinking Budget & Hiệu chỉnh Ngưỡng Watchdog:**
-     - Ngưỡng 8000ms hiện tại (`first-token-timeout-ms: 8000`) là **ngưỡng khởi điểm dự phòng (provisional threshold)**, không phải là một hằng số sản xuất bất biến.
+     - Ngưỡng 8000ms hiện tại (`first-token-timeout-ms: 11000`) là **ngưỡng khởi điểm dự phòng (provisional threshold)**, không phải là một hằng số sản xuất bất biến.
      - Mô hình `gemini-2.5-pro` sở hữu cơ chế suy luận chuyên sâu (internal thinking budget). Đối với các câu hỏi nhạc lý phức tạp, mô hình có thể dành nhiều giây để "suy nghĩ" trước khi phát ra token đầu tiên, khiến TTFT (Time-To-First-Token) thực tế có thể vượt quá 8s mà không phải do lỗi mạng hay sự cố máy chủ.
      - Do đó, trong giai đoạn chạy thử nghiệm Staging/Production, đội ngũ vận hành bắt buộc phải giám sát phân phối độ trễ `ai.latency.ttft{model="gemini-2.5-pro"}` qua các bách phân vị **p50, p95 và p99** để tinh chỉnh ngưỡng Watchdog phù hợp (ví dụ nâng lên 10s - 12s nếu p95 thực tế là 9.5s), tránh việc Breaker bị kích hoạt nhầm khi mô hình đang xử lý bình thường.
    * **Kiến trúc Hai Giai Đoạn (Two-Phase Client Architecture) khi hỗ trợ Streaming cho Reasoning Tier:**
      - Nếu nâng cấp Reasoning Tier sang gọi trực tiếp `:streamGenerateContent` cho câu trả lời dài của Pro (nhiều tool, văn bản giải thích nhạc lý chuyên sâu):
-       - *Giai đoạn 1 (First-Token Phase):* Giám sát thời gian chờ nhận **chunk đầu tiên** bằng Watchdog 8000ms qua client ngắn.
+       - *Giai đoạn 1 (First-Token Phase):* Giám sát thời gian chờ nhận **chunk đầu tiên** bằng Watchdog 11000ms qua client ngắn.
        - *Giai đoạn 2 (Streaming Phase):* Sau khi nhận được chunk đầu tiên (chứng minh server sẵn sàng), luồng stream chuyển sang đọc dữ liệu qua client dài (`readTimeout = 90s` hoặc `interChunkTimeout = 15s` giữa các packet) để hoàn tất stream văn bản dài mà không bị ngắt quãng giữa chừng.
 3. **Xử Lý Safety Blocks (HTTP 200 vs HTTP 400) & Thiết Lập Alert Giám Sát Độc Lập:**
    * **Safety Block dạng HTTP 400 (Client Error):** Đã được đưa vào `ignore-exceptions` của Breaker để bảo vệ Circuit Breaker không bị nhảy OPEN oan uổng khi người dùng gửi prompt độc hại vi phạm Safety Policy.
@@ -1277,7 +1277,7 @@ public enum SafetyBlockCategory {
 * **Hiệu chuẩn lần 14:**
   - Nâng cấp Flyway `V5` MySQL `DATETIME(6)` microsecond precision, bảo toàn `@PrePersist` trong AbstractAuditEntity, gom lưu `@Transactional saveFastPathMessages`.
 * **Hiệu chuẩn lần 13:**
-  - Hoàn thiện Giai đoạn 2: ModelRouterService, CircuitBreakerLifecycle, First-Token Watchdog 8000ms.
+  - Hoàn thiện Giai đoạn 2: ModelRouterService, CircuitBreakerLifecycle, First-Token Watchdog 11000ms.
 
 ---
 

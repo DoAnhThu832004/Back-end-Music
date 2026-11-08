@@ -27,7 +27,7 @@ class ModelRouterServiceTest {
         properties.setReasoningTierEnabled(true);
         properties.setFastTierModel("gemini-3.5-flash-lite");
         properties.setReasoningTierModel("gemini-2.5-pro");
-        properties.setFirstTokenTimeoutMs(8000);
+        properties.setFirstTokenTimeoutMs(11000);
 
         circuitBreakerRegistry = CircuitBreakerRegistry.ofDefaults();
         meterRegistry = new SimpleMeterRegistry();
