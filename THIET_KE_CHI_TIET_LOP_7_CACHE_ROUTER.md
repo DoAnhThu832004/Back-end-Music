@@ -1171,6 +1171,40 @@ public enum SafetyBlockCategory {
 > - *Đăng ký khi phát sinh sự kiện đầu tiên (First-event / On-demand registration):* Nếu Counter chỉ được tạo khi có sự kiện phát sinh (`meterRegistry.counter(...).increment()`), series sẽ vắng mặt hoàn toàn cho tới khi xuất hiện sự kiện đầu tiên.
 > - *Bẫy một vế rỗng & Cơ chế `on()` không nhãn:* Phép cộng `A + B` trong Prometheus khi một vế có dữ liệu (ví dụ 10 lỗi client 400) và một vế rỗng (chưa từng có safety block) sẽ biến thành `10 + empty = empty set` $\implies$ Alert bị câm dù lỗi đã vượt ngưỡng! Vì `vector(0)` sinh ra metric không nhãn `{}` và `sum(...)` không có `by` cũng mang nhãn `{}`, nên cú pháp `(sum(...) or on() vector(0))` biến vế rỗng thành số 0 (`10 + 0 = 10 > 5`), bảo đảm cảnh báo kích hoạt chuẩn xác.
 
+#### 7.2.1. Cấu hình Micrometer Distribution & PromQL Panels cho Grafana Dashboard (Thực thi Staging)
+
+1. **Bật Histogram Percentiles & SLO trong `application.yaml`:**
+   Để xuất các chuỗi thời gian `_bucket` cho Timer phục vụ hàm `histogram_quantile` trên Grafana/Prometheus:
+   ```yaml
+   management:
+     metrics:
+       distribution:
+         percentiles-histogram:
+           ai.latency.ttft: true
+           ai.latency.fastpath: true
+         slo:
+           ai.latency.ttft: 1s, 2s, 4s, 6s, 8s, 10s, 12s, 15s
+   ```
+
+2. **Panel PromQL: Phân phối TTFT (p50 / p95 / p99) của `gemini-2.5-pro` (Đo Thinking Budget):**
+   ```promql
+   # p95 Time-To-First-Token của Reasoning Tier (gemini-2.5-pro)
+   histogram_quantile(0.95, sum(rate(ai_latency_ttft_seconds_bucket{model="gemini-2.5-pro"}[5m])) by (le))
+   ```
+   *(Tương tự thay 0.95 bằng 0.50 cho p50 và 0.99 cho p99 để tìm điểm cắt chốt cứng tham số `first-token-timeout-ms`).*
+
+3. **Panel PromQL: Tỷ lệ Cache Hit Tiềm Năng 24h (Potential Cache Hit Rate):**
+   Sử dụng hàm `clamp_min(..., 1)` ở mẫu số để phòng vệ triệt để lỗi chia cho 0 khi khởi động server:
+   ```promql
+   (sum(ai_cache_exact_repeat_24h_hits_total) or on() vector(0))
+   /
+   clamp_min(
+     (sum(ai_cache_semantic_eligibility_total{eligible="true"}) or on() vector(0))
+     - (sum(ai_cache_anonymous_prompts_total) or on() vector(0)),
+     1
+   ) * 100
+   ```
+
 ---
 
 ## 8. PHÂN KỲ TRIỂN KHAI & DANH MỤC CÔNG VIỆC (KHỚP SINGLE SOURCE OF TRUTH)

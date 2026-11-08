@@ -288,13 +288,27 @@ Sau 21 vòng lặp tinh chỉnh, toàn bộ chu kỳ hiệu chỉnh văn bản t
     ```
     *(Lưu ý kỹ thuật: Không sử dụng `http_server_requests_seconds_count` vì đó là metric của Tomcat đo phía client – vốn luôn trả về HTTP 200 OK khi khởi tạo luồng SSE; các lỗi upstream từ Gemini xảy ra bất đồng bộ bên trong `aiStreamingExecutor` và được ghi nhận chuẩn xác vào `ai_gemini_client_errors_total`).*
 * **Hiệu chuẩn First-Token Watchdog dưới áp lực Thinking Budget:**
-  - Đẩy code lên Staging và dựng Grafana Dashboard theo dõi timer `ai.latency.ttft` của `gemini-2.5-pro`.
+  - Kích hoạt cấu hình `management.metrics.distribution.percentiles-histogram` trong `application.yaml` để sinh chuỗi dữ liệu `_bucket`.
+  - Dựng Grafana Panel theo dõi phân vị TTFT của `gemini-2.5-pro` qua PromQL:
+    ```promql
+    histogram_quantile(0.95, sum(rate(ai_latency_ttft_seconds_bucket{model="gemini-2.5-pro"}[5m])) by (le))
+    ```
   - Thực hiện bài kiểm thử tải vừa phải với các câu hỏi nhạc lý phức tạp (phân tích hòa âm, phức điệu) để khảo sát xem Thinking Budget của mô hình Pro đẩy phân phối p95/p99 lên bao nhiêu giây.
   - Chốt cứng tham số cấu hình `ai.router.gemini-critic-router.first-token-timeout-ms` (thay cho con số dự phòng khởi điểm 8000ms).
 
 ### 🎯 Thứ tự ưu tiên 3 (Sau khi Go-Live — [📈 THEO DÕI SẢN XUẤT]):
 * **Đo lường Repeat Ratio thực tế ($N \ge 5.000$):**
   - Giám sát tỉ lệ lặp lại câu hỏi qua Prometheus metrics `ai.cache.exact_repeat_hits` và `ai.cache.exact_repeat_24h_hits`.
+  - Cấu hình Panel Grafana đo Potential Cache Hit Rate (24h) với `clamp_min(..., 1)` chống lỗi chia cho 0:
+    ```promql
+    (sum(ai_cache_exact_repeat_24h_hits_total) or on() vector(0))
+    /
+    clamp_min(
+      (sum(ai_cache_semantic_eligibility_total{eligible="true"}) or on() vector(0))
+      - (sum(ai_cache_anonymous_prompts_total) or on() vector(0)),
+      1
+    ) * 100
+    ```
   - Áp dụng nghiêm ngặt Khung Quyết Định 3 Nhánh:
     - Nếu $\ge 3\%$: Kích hoạt triển khai Vector Database (pgvector / Milvus).
     - Nếu $1\% - 3\%$: Chạy thử nghiệm Shadow Mode trên 10% lưu lượng trong 7 ngày.
