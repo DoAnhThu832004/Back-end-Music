@@ -412,8 +412,7 @@ Việc bổ sung cơ chế fallback không dấu cho chuỗi có dấu (`hasDiac
              - org.springframework.web.client.HttpClientErrorException$TooManyRequests
            ignore-exceptions:
              - org.apache.catalina.connector.ClientAbortException
-             - org.springframework.web.context.request.async.AsyncRequestNotUsableException
-             - org.springframework.web.client.HttpClientErrorException$BadRequest
+              - org.springframework.web.client.HttpClientErrorException$BadRequest
              - org.springframework.web.client.HttpClientErrorException$Forbidden
    ```
 
