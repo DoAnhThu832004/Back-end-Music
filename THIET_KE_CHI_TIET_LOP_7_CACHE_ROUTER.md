@@ -1,12 +1,12 @@
 # 📐 BẢN ĐẶC TẢ THIẾT KẾ KỸ THUẬT: LỚP 7 (CACHE & MODEL ROUTER)
 > **Dự án:** `identity-service-main` (Spring Boot 3 + Google Gemini) & Android Client App  
 > **Chuyên đề:** Kiến trúc tối ưu hóa độ trễ, chi phí token và định tuyến mô hình  
-> **Trạng thái:** 🚀 *Tài liệu đặc tả kỹ thuật hoàn thiện (Hiệu chuẩn lần 18 — Nghiệm thu Giai đoạn 1 & Giai đoạn 2 đạt 75% Code-Complete, Telemetry Instrumented, 109/109 Unit & Integration tests passed 100%, bảo chứng thực nghiệm 58 ca FastPathEngine bao phủ phủ định có dấu & không dấu, thiết lập KE_HOACH_LOP_7_CACHE_ROUTER.md là Single Source of Truth duy nhất loại bỏ bảng/checklist trùng lặp, PromQL alert increase() kết hợp `or on() vector(0)` chống series rỗng và ghi chú baseline lưu lượng, phân định SO_TIMEOUT 15s trong điều kiện 0-byte starvation vs cancel(true) luồng ảo, đo lường p50/p95/p99 TTFT cho Gemini Pro Thinking, thay thế Redis SET NX GET cho đa instance, giới hạn bounded cardinality tag qua SafetyBlockCategory enum)*
+> **Trạng thái:** 🚀 *Tài liệu đặc tả kỹ thuật hoàn thiện (Hiệu chuẩn lần 19 — Nghiệm thu Giai đoạn 1 & Giai đoạn 2 đạt 75% Code-Complete, Telemetry Instrumented, 109/109 Unit & Integration tests passed 100%, bảo chứng thực nghiệm 58 ca FastPathEngine bao phủ phủ định có dấu & không dấu, chuẩn hóa bảng ánh xạ SafetyBlockCategory theo chuẩn Google Gemini API, phân định rõ ràng giữa Eager vs Lazy registration cho Micrometer, bẫy phép cộng vector 1 vế rỗng, loại trừ MAX_TOKENS khỏi safety alert, đặc tả Lua script atomic cho Redis < 7.0, đồng bộ HTML anchors)*
 
 ---
 
 ## 📑 MỤC LỤC
-1. [Đánh Giá Hiện Trạng & Phân Rã Điểm Số Chuẩn Xác (75% Code-Complete, Telemetry Instrumented)](#1-đánh-giá-hiện-trạng--phân-rã-điểm-số-chuẩn-xác-75-code-complete-telemetry-instrumented)
+1. [Đánh Giá Hiện Trạng & Tiến Độ Thực Hiện (75% Code-Complete, Telemetry Instrumented)](#1-đánh-giá-hiện-trạng--tiến-độ-thực-hiện-75-code-complete-telemetry-instrumented)
 2. [Sơ Đồ Luồng Xử Lý Chuẩn (Execution Pipeline)](#2-sơ-đồ-luồng-xử-lý-chuẩn-execution-pipeline)
 3. [Module 1: Thiết Kế Fast-Path Engine & Đồng Bộ Hậu Giai Đoạn 1 [ĐÃ HOÀN THÀNH 100%]](#3-module-1-thiết-kế-fast-path-engine--đồng-bộ-hậu-giai-đoạn-1-đã-hoàn-thành-100)
    - [3.1. Phân biệt lệnh Player, Ngữ cảnh Turn 1, Chuẩn hóa Persona & Phản hồi trung tính cho `NEXT`](#31-phân-biệt-lệnh-player-ngữ-cảnh-turn-1-chuẩn-hóa-persona--phản-hồi-trung-tính-cho-next)
@@ -30,7 +30,7 @@
 7. [Module 5: Kết Quả Kiểm Thử Thực Nghiệm & Metrics](#7-module-5-kết-quả-kiểm-thử-thực-nghiệm--metrics)
    - [7.1. Kết quả kiểm thử thực tế (109/109 Unit & Integration Tests Passed 100%)](#71-kết-quả-kiểm-thử-thực-tế-109109-unit--integration-tests-passed-100)
    - [7.2. Chỉ số Giám sát Micrometer Metrics & Cảnh Báo Prometheus](#72-chỉ-số-giám-sát-micrometer-metrics--cảnh-báo-prometheus)
-8. [Phân Kỳ Triển Khai & Nghiệm Thu (Khớp Single Source of Truth)](#8-phân-kỳ-triển-khai--nghiệm-thu-khớp-single-source-of-truth)
+8. [Phân Kỳ Triển Khai & Danh Mục Công Việc (Khớp Single Source of Truth)](#8-phân-kỳ-triển-khai--danh-mục-công-việc-khớp-single-source-of-truth)
 9. [Nhật Ký Thay Đổi (Changelog)](#9-nhật-ký-thay-đổi-changelog)
 
 ---
@@ -40,7 +40,7 @@
 > [!IMPORTANT]
 > **Quy Chuẩn Nguồn Sự Thật Duy Nhất (Single Source of Truth):**  
 > Toàn bộ bảng phân rã tiến độ 4 thành phần kỹ thuật chi tiết (mỗi thành phần chiếm trọng số 25%), tiến độ lũy kế đạt **75% Code-Complete, Telemetry Instrumented**, tiêu chí ký duyệt **100% Production-Ready** và ma trận đối chuẩn chi tiết 109 tests được duy trì duy nhất tại:  
-> 👉 **[KE_HOACH_LOP_7_CACHE_ROUTER.md — Mục 1: Đánh Giá Hiện Trạng & Phân Rã Tiến Độ Chuẩn Xác](KE_HOACH_LOP_7_CACHE_ROUTER.md#1-đánh-giá-hiện-trạng--phân-rã-tiến-độ-chuẩn-xác)**.
+> 👉 **[KE_HOACH_LOP_7_CACHE_ROUTER.md — Mục 1: Đánh Giá Hiện Trạng & Phân Rã Tiến Độ Chuẩn Xác](KE_HOACH_LOP_7_CACHE_ROUTER.md#muc-1-hien-trang)**.
 
 Tài liệu đặc tả thiết kế kỹ thuật này tập trung toàn bộ vào phân tích kiến trúc chuyên sâu, giải pháp triệt tiêu các bẫy thực thi (JPA Auditing, Collation, Socket Timeout, Resilience4j, Telemetry Isolation), sơ đồ luồng dữ liệu chuẩn hóa và mã nguồn chi tiết của các module trong hệ thống.
 
@@ -476,7 +476,10 @@ public enum ModelTier {
      - Thiết lập cảnh báo Prometheus kết hợp để không bỏ sót các cuộc tấn công Prompt Injection hàng loạt hoặc vi phạm API key:
        - **Sửa cú pháp PromQL Alert & Chống Series Vắng Mặt (`or on() vector(0)`):**
          - Hàm `rate()` đo lường số sự kiện trên mỗi giây (events per second). Với ứng dụng âm nhạc quy mô vừa và nhỏ, mức lỗi 5 lần trong 5 phút chỉ tương đương 5 / 300 = 0.0167 req/s, nên điều kiện `rate(...) > 5` sẽ không bao giờ được kích hoạt (cần tới 1.500 lỗi/5 phút mới đạt rate > 5!). Do đó, quy tắc cảnh báo bắt buộc phải sử dụng hàm `increase(...[5m])`.
-         - **Bẫy phép cộng Vector trong Prometheus:** Phép cộng `+` giữa hai vector đòi hỏi cả hai vế đều phải trả về time-series. Nếu một trong hai vế chưa từng phát sinh sự kiện trong 5 phút (series không tồn tại), kết quả của phép cộng sẽ là **rỗng (empty set)** và Alert sẽ KHÔNG BAO GIỜ kích hoạt! Do đó, bắt buộc phải dùng `or on() vector(0)` cho từng vế để đảm bảo luôn có giá trị số 0 để cộng:
+         - **Bẫy Phép Cộng Vector & Cơ Chế Đăng Ký Metric (Eager vs Lazy Registration):**
+           - *Kiến trúc Khuyến nghị (Eager Pre-registration):* Đăng ký sẵn Counter với các nhãn cố định (`status="400"`, `status="403"`, và các enum `category`) trong configuration bean lúc khởi động ứng dụng. Khi đó time-series luôn tồn tại với giá trị 0, triệt tiêu nguy cơ series vắng mặt.
+           - *Phòng vệ câu truy vấn (Defensive PromQL):* Nếu ứng dụng đăng ký Counter theo kiểu lười (chỉ gọi `meterRegistry.counter(...)` khi có sự kiện), series sẽ không tồn tại cho tới lỗi đầu tiên.
+           - *Bẫy một vế rỗng:* Trong Prometheus, phép cộng `A + B` đòi hỏi cả hai vế đều phải có dữ liệu. Nếu trong 5 phút có 10 lỗi client 400 (`A = 10`) nhưng không có safety block nào (`B = rỗng`), phép tính `10 + empty` sẽ trả về **`empty set`**! Khi đó dù lỗi client tăng vọt, Alert vẫn bị câm hoàn toàn. Dùng `(A or on() vector(0)) + (B or on() vector(0)) > 5` giải quyết triệt để tình huống này: vế rỗng được thay bằng 0 (`10 + 0 = 10 > 5`), giúp cảnh báo kích hoạt chuẩn xác.
        ```promql
        # Cảnh báo Safety Blocks hoặc lỗi Client 400/403 tăng đột biến (> 5 sự kiện trong 5 phút)
        # Lưu ý: Ngưỡng > 5 là con số tham khảo khởi điểm cho dev/staging; trên Production thực tế, ngưỡng alert bắt buộc phải được hiệu chuẩn theo baseline lưu lượng thực tế (ví dụ: trung bình 7 ngày + 3 sigma hoặc vượt 5% tổng request 5 phút)
@@ -792,7 +795,19 @@ public class TelemetryService {
      - Nếu trả về `oldUserId`: Key đã tồn tại:
        - Nếu `oldUserId.equals(userId)` $\implies$ Cùng người dùng thử lại (`self_repeat_24h_hits++`).
        - Nếu `!oldUserId.equals(userId)` $\implies$ Lặp lại liên người dùng (`exact_repeat_24h_hits++`).
-     *Đặc tính quan trọng về TTL của Redis:* Do mang cờ `NX`, khi key đã tồn tại, Redis không ghi đè và **KHÔNG làm mới (refresh/extend) TTL**. Nghĩa là cửa sổ 24 giờ được tính cố định từ thời điểm prompt đầu tiên được lưu, khớp chính xác với hành vi `expireAfterWrite(24, TimeUnit.HOURS)` của Caffeine Cache cục bộ (không bị kéo dài bởi các lượt truy cập sau như `expireAfterAccess`). Lệnh này hỗ trợ gốc từ Redis 7.0+; trên các cụm Redis cũ hơn, sử dụng Lua script nguyên tử tương đương. Tuyệt đối không dùng HyperLogLog vì không hỗ trợ kiểm tra sự tồn tại (membership) cũng như không lưu trữ định danh user.
+     *Đặc tính quan trọng về TTL của Redis:* Do mang cờ `NX`, khi key đã tồn tại, Redis không ghi đè và **KHÔNG làm mới (refresh/extend) TTL**. Nghĩa là cửa sổ 24 giờ được tính cố định từ thời điểm prompt đầu tiên được lưu, khớp chính xác với hành vi `expireAfterWrite(24, TimeUnit.HOURS)` của Caffeine Cache cục bộ (không bị kéo dài bởi các lượt truy cập sau như `expireAfterAccess`). Lệnh này hỗ trợ gốc từ Redis 7.0+.
+     - **Với cụm Redis < 7.0:** Bắt buộc sử dụng script Lua nguyên tử được thiết kế đọc giá trị cũ trước khi ghi:
+       ```lua
+       -- Lua script mô phỏng SET key value EX ttl NX GET trên Redis < 7.0
+       local old = redis.call('GET', KEYS[1])
+       if old then
+           return old
+       else
+           redis.call('SET', KEYS[1], ARGV[1], 'EX', ARGV[2])
+           return nil
+       end
+       ```
+       Script kiểm tra `GET` trước; nếu đã có giá trị cũ, lập tức trả về `old` mà không làm thay đổi TTL hay giá trị hiện tại. Nếu chưa có, mới thực thi `SET ... EX` và trả về `nil`. Tuyệt đối không dùng HyperLogLog vì không hỗ trợ kiểm tra sự tồn tại (membership) cũng như không lưu trữ định danh user.
 
 ```mermaid
 graph TD
@@ -1000,37 +1015,69 @@ meterRegistry.counter("ai.cache.anonymous_prompts");      // Câu hỏi từ ng�
 // 3. Gemini Client & In-Stream Safety Metrics (Phục vụ Prometheus Alerting - Đang trong Checklist [ ])
 meterRegistry.counter("ai.gemini.client.errors", "status", String.valueOf(statusCode)); // 400, 403
 
-// Ánh xạ blockReason tự do từ Google sang enum hữu hạn (Bounded Cardinality chống nổ nhãn Prometheus)
-SafetyBlockCategory category = SafetyBlockCategory.fromGemini(blockReason);
+// Ánh xạ blockReason / finishReason tự do từ Google sang enum hữu hạn (Bounded Cardinality chống nổ nhãn Prometheus)
+SafetyBlockCategory category = SafetyBlockCategory.fromGemini(rawBlockOrFinishReason);
 meterRegistry.counter("ai.gemini.safety.blocks", "category", category.name(), "type", blockType); 
 // Nhãn "type" chỉ nhận đúng 2 giá trị xác định:
 //   - "prompt": Request bị Google chặn ngay từ đầu vào (promptFeedback.blockReason != null)
-//   - "response": Quá trình stream ứng đáp bị ngắt giữa chừng (candidates[0].finishReason != STOP)
+//   - "response": Quá trình stream bị ngắt do vi phạm an toàn/chính sách (finishReason thuộc nhóm SAFETY, RECITATION, BLOCKLIST, PROHIBITED_CONTENT, SPII).
+//   * LƯU Ý BẢO VỆ: TUYỆT ĐỐI KHÔNG ĐẾM khi finishReason là STOP hoặc MAX_TOKENS (hành vi nghiệp vụ thông thường).
 ```
 
-#### Bảng Ánh Xạ Chuẩn Sang Enum `SafetyBlockCategory` (Đặc tả Bounded Cardinality)
+#### Bảng Ánh Xạ Chuẩn Sang Enum `SafetyBlockCategory` (Đối Chiếu Chính Thức Google Gemini API)
 
-Google Gemini API trả về lý do chặn dưới dạng chuỗi tự do (free-form string) ở hai tầng khác nhau. Nhằm triệt tiêu rủi ro bùng nổ cardinality nhãn trên Prometheus TSDB, hệ thống chuẩn hóa tất cả về một enum hữu hạn gồm đúng 5 giá trị:
-- `SAFETY`: Vi phạm an toàn tiêu chuẩn (bạo lực, khiêu dâm, quấy rối).
-- `HARM`: Nội dung nguy hiểm, độc hại, hướng dẫn tự hại hoặc kích động phạm pháp.
-- `RECITATION`: Trích dẫn vi phạm bản quyền lời bài hát hoặc tác phẩm văn học được bảo hộ (Gemini ngắt stream bảo vệ IP).
-- `POLICY`: Vi phạm danh sách đen từ khóa (Blocklist), nội dung bị cấm theo chính sách nền tảng.
-- `OTHER`: Các lý do chưa xác định, không phân loại, hoặc `BLOCK_REASON_UNSPECIFIED`.
+Đối chiếu trực tiếp với đặc tả kỹ thuật chính thức của Google Gemini API (`BlockReason` và `FinishReason`), hệ thống chuẩn hóa tất cả về một enum hữu hạn gồm đúng 5 giá trị:
+- `SAFETY`: Vi phạm ngưỡng cài đặt an toàn (bạo lực, khiêu dâm, quấy rối, nội dung nguy hiểm - `BlockReason.SAFETY`, `FinishReason.SAFETY`).
+- `RECITATION`: Trích dẫn vi phạm bản quyền lời bài hát hoặc tác phẩm văn học được bảo hộ (`FinishReason.RECITATION`).
+- `POLICY`: Vi phạm danh sách đen từ khóa (Blocklist) hoặc nội dung bị cấm theo chính sách nền tảng (`BLOCKLIST`, `PROHIBITED_CONTENT`).
+- `PRIVACY`: Tiết lộ thông tin định danh cá nhân nhạy cảm (`FinishReason.SPII`).
+- `OTHER`: Các lý do chưa xác định (`BLOCK_REASON_UNSPECIFIED`, `FINISH_REASON_UNSPECIFIED`, `OTHER`) và là **nhánh mặc định `default -> OTHER`** bắt buộc để bảo đảm an toàn trước mọi giá trị mới Google bổ sung trong tương lai.
 
-| Nguồn phát sinh (Source) | Trường gốc Gemini API | Chuỗi gốc từ Google (Raw Value) | Ánh xạ sang `SafetyBlockCategory` |
-| :--- | :--- | :--- | :--- |
-| **Đầu vào Prompt** (`type="prompt"`) | `promptFeedback.blockReason` | `SAFETY`, `BLOCKED_REASON_SAFETY` | `SAFETY` |
-| | | `BLOCKLIST` | `POLICY` |
-| | | `PROHIBITED_CONTENT` | `POLICY` |
-| | | `IMAGE_SAFETY` | `SAFETY` |
-| | | `BLOCK_REASON_UNSPECIFIED` / khác | `OTHER` |
-| **Dòng phản hồi** (`type="response"`) | `candidates[0].finishReason` | `SAFETY` | `SAFETY` |
-| | | `RECITATION` | `RECITATION` |
-| | | `BLOCKLIST` | `POLICY` |
-| | | `PROHIBITED_CONTENT` | `POLICY` |
-| | | `SPII` (Sensitive PII) | `SAFETY` |
-| | | `MALICIOUS` | `HARM` |
-| | | `OTHER` / không rõ | `OTHER` |
+| Nguồn phát sinh (Source) | Trường gốc Gemini API | Giá trị chính thức từ Google (Official Enum) | Ánh xạ sang `SafetyBlockCategory` | Tiêu chí phân loại |
+| :--- | :--- | :--- | :--- | :--- |
+| **Đầu vào Prompt** (`type="prompt"`) | `promptFeedback.blockReason` | `SAFETY` | `SAFETY` | Vi phạm ngưỡng an toàn nội dung đầu vào |
+| | | `BLOCKLIST` | `POLICY` | Khớp danh sách đen từ khóa bị chặn |
+| | | `PROHIBITED_CONTENT` | `POLICY` | Nội dung bị cấm theo chính sách nền tảng |
+| | | `BLOCK_REASON_UNSPECIFIED` / `OTHER` | `OTHER` | Lý do không xác định hoặc lý do khác |
+| | | *(Bất kỳ giá trị nào khác / mới)* | `OTHER` | Fallback an toàn chống nổ cardinality |
+| **Dòng phản hồi** (`type="response"`) | `candidates[0].finishReason` | `SAFETY` | `SAFETY` | Vi phạm an toàn trong nội dung sinh ra |
+| | | `RECITATION` | `RECITATION` | Vi phạm bản quyền lời bài hát/văn bản |
+| | | `BLOCKLIST` | `POLICY` | Chứa từ khóa thuộc danh sách cấm |
+| | | `PROHIBITED_CONTENT` | `POLICY` | Chứa nội dung bị cấm theo chính sách |
+| | | `SPII` | `PRIVACY` | Tiết lộ thông tin định danh cá nhân nhạy cảm |
+| | | `OTHER` / `FINISH_REASON_UNSPECIFIED` | `OTHER` | Lý do chưa phân loại hoặc khác |
+| | | *(Bất kỳ giá trị nào khác / mới)* | `OTHER` | Fallback an toàn chống nổ cardinality |
+
+> [!WARNING]
+> **Các Giá Trị Tuyệt Đối Loại Trừ Khỏi Metric Safety:**
+> - `STOP`: Hoàn thành sinh văn bản tự nhiên bình thường.
+> - `MAX_TOKENS`: Chạm giới hạn token cấu hình (`maxOutputTokens = 800`). Đây là trường hợp thường xuyên xảy ra khi câu trả lời dài, hoàn toàn lành tính, **tuyệt đối không được tính vào safety block** để chống kích hoạt alert oan.
+> - `MALFORMED_FUNCTION_CALL`: Lỗi cú pháp JSON gọi tool (xử lý ở tầng Agentic Orchestrator).
+> - `LANGUAGE`: Ngôn ngữ chưa hỗ trợ.
+
+```java
+// Mã nguồn đặc tả kỹ thuật enum SafetyBlockCategory
+public enum SafetyBlockCategory {
+    SAFETY,
+    RECITATION,
+    POLICY,
+    PRIVACY,
+    OTHER;
+
+    public static SafetyBlockCategory fromGemini(String rawReason) {
+        if (rawReason == null || rawReason.isBlank()) {
+            return OTHER;
+        }
+        return switch (rawReason.trim().toUpperCase(Locale.ROOT)) {
+            case "SAFETY" -> SAFETY;
+            case "RECITATION" -> RECITATION;
+            case "BLOCKLIST", "PROHIBITED_CONTENT" -> POLICY;
+            case "SPII" -> PRIVACY;
+            default -> OTHER; // Nhánh mặc định bắt buộc: hấp thụ toàn bộ giá trị không xác định hoặc Google bổ sung sau này
+        };
+    }
+}
+```
 
 *(Lưu ý: Enum `SafetyBlockCategory` và hàm `fromGemini()` hiện là đặc tả kỹ thuật được quản lý trong checklist `[ ]` của Kế hoạch, sẽ được triển khai code Java và viết unit test đồng thời khi cấu hình hạ tầng Alerting).*
 
@@ -1052,8 +1099,10 @@ Google Gemini API trả về lý do chặn dưới dạng chuỗi tự do (free-
 ```
 
 > [!NOTE]
-> **Cơ Chế Đăng Ký Trễ (Lazy Registration) của Micrometer & Cứu Cánh `or on() vector(0)`:**  
-> Trong Spring Boot Actuator với Micrometer, Counter chỉ xuất hiện trên endpoint `/actuator/prometheus` sau lần gọi `.increment()` đầu tiên. Trước khi có lỗi đầu tiên, metric `ai_gemini_client_errors_total` hoặc `ai_gemini_safety_blocks_total` hoàn toàn không tồn tại trong Prometheus TSDB. Biểu thức `sum(...)` không có mệnh đề `by` khi không có bất kỳ time-series nào làm dữ liệu đầu vào sẽ trả về **tập rỗng (empty set)**. Phép cộng vector giữa hai tập hợp rỗng trong Prometheus sẽ tiếp tục trả về tập rỗng khiến quy tắc Alert bị câm hoàn toàn. Mệnh đề `or on() vector(0)` đảm bảo vế vắng mặt luôn có giá trị số 0 để phép cộng thực thi chính xác.
+> **Cơ Chế Đăng Ký Metric (Eager vs Lazy) & Bẫy Vector Một Vế Rỗng:**  
+> - *Eager Registration (Khuyến nghị):* Khởi tạo trước các Counter với tag cố định trong `@Configuration` giúp series luôn xuất hiện trên `/actuator/prometheus` với giá trị 0 ngay từ khi khởi động ứng dụng.
+> - *Lazy Registration:* Nếu Counter chỉ được tạo khi có lỗi phát sinh (`meterRegistry.counter(...).increment()`), series sẽ vắng mặt hoàn toàn cho tới sự kiện đầu tiên.
+> - *Bẫy một vế rỗng:* Phép cộng `A + B` trong Prometheus khi một vế có dữ liệu (ví dụ 10 lỗi client 400) và một vế rỗng (chưa từng có safety block) sẽ biến thành `10 + empty = empty set` $\implies$ Alert bị câm dù lỗi đã vượt ngưỡng! Cú pháp `(sum(...) or on() vector(0))` biến vế rỗng thành số 0 (`10 + 0 = 10 > 5`), bảo đảm cảnh báo kích hoạt chuẩn xác.
 
 ---
 
@@ -1068,12 +1117,17 @@ Google Gemini API trả về lý do chặn dưới dạng chuỗi tự do (free-
 
 ## 9. NHẬT KÝ THAY ĐỔI (CHANGELOG)
 
-* **Hiệu chuẩn lần 18 (Hiện tại):**
+* **Hiệu chuẩn lần 19 (Hiện tại):**
+  - **Chuẩn Hóa Bảng Ánh Xạ `SafetyBlockCategory` Theo Gemini API Chính Thức:** Đối chiếu và loại bỏ toàn bộ các enum suy đoán/không chuẩn (`BLOCKED_REASON_SAFETY`, `IMAGE_SAFETY`, `MALICIOUS`); chuẩn hóa 5 danh mục hữu hạn: `SAFETY`, `RECITATION`, `POLICY`, `PRIVACY` (ánh xạ từ `SPII`), và `OTHER`. Thiết lập nhánh `default -> OTHER` bắt buộc trong `fromGemini()` để bảo đảm an toàn trước mọi giá trị mới Google bổ sung.
+  - **Loại Trừ Nghiêm Ngặt `MAX_TOKENS` Khỏi Safety Alert:** Làm rõ `finishReason == MAX_TOKENS` là hành vi nghiệp vụ bình thường khi chạm giới hạn token (800 tokens), tuyệt đối không được đếm vào counter `ai.gemini.safety.blocks` để tránh cảnh báo giả.
+  - **Phân Định Rõ Ràng Eager vs Lazy Registration & Bẫy Vector Một Vế Rỗng:** Phân tích rõ 2 hướng tiếp cận (Eager pre-registration khi khởi động ứng dụng vs Defensive PromQL query). Phân tích chi tiết bẫy nguy hiểm nhất trong Prometheus: khi một vế có dữ liệu (lỗi 400 tăng vọt) và một vế rỗng (chưa từng có safety block), phép cộng trả về `empty set` khiến Alert bị câm; `or on() vector(0)` là cứu cánh bắt buộc để biến vế rỗng thành 0.
+  - **Đặc Tả Script Lua Nguyên Tử Cho Redis < 7.0:** Cung cấp script Lua chuẩn kiểm tra `GET` trước; nếu tồn tại thì trả về `old` mà không chạm vào TTL/giá trị, nếu chưa có mới gọi `SET ... EX`, tái lập 100% ngữ nghĩa `SET ... NX GET` trên các cụm Redis cũ.
+  - **Đồng Bộ Hoàn Toàn Mục Lục & Anchor Links:** Sửa lỗi lệch tiêu đề Mục 1 trong Mục lục ("...& TIẾN ĐỘ THỰC HIỆN"), đồng bộ anchor link Mục 1 sang `#muc-1-hien-trang`.
+  - **Trung Thực Hóa Phần Tóm Tắt Hiện Trạng:** Xóa bỏ khẳng định mang tính ý định, giữ nguyên ranh giới rõ ràng: 75% Code-Complete với 109/109 tests cho phần lõi, 3 hạng mục vận hành thực tế (Testcontainers MySQL, Staging TTFT, Alerting/Grafana) được duy trì mở `[ ]` trong Kế hoạch.
+* **Hiệu chuẩn lần 18:**
   - **Chuẩn hóa Single Source of Truth Triệt Để:** Rút gọn triệt để Mục 1, Mục 7.1 và Mục 8 trong tài liệu Thiết kế để trỏ duy nhất về `KE_HOACH_LOP_7_CACHE_ROUTER.md` qua các anchor cố định (`#muc-1-hien-trang`, `#muc-4-kiem-thu`, `#muc-5-danh-muc`), loại bỏ hoàn toàn các bảng tiến độ/test phân rã và checklist trùng lặp phải duy trì thủ công.
   - **Xác Nhận & Làm Rõ Cấu Trúc 2 Tầng Phủ Định (Duy trì 109/109 Tests PASS):** Xác nhận duy trì bộ 109/109 bài test (không phát sinh test mới); làm rõ cơ chế bảo vệ hai tầng độc lập: Tầng có dấu (`"đừng..."`, `"không..."`) chặn triệt để tại Bước 2; Tầng không dấu (`"dung tat nhac"`, `"ko dung lai"`, `"cho tat nhac"`, `"ko tat"`, `"dung tam dung"`) chặn qua neo `^` và `$` của `STOP_UNACCENTED`.
-  - **Bẫy Micrometer Lazy Registration & Cú pháp PromQL Alert (`or on() vector(0)`):** Làm rõ nguyên nhân series vắng mặt là do cơ chế đăng ký trễ của Micrometer (chỉ xuất hiện sau lần `.increment()` đầu tiên). Bổ sung `or on() vector(0)` cho từng vế để ngăn chặn phép cộng vector trả về rỗng; bổ sung cảnh báo ngưỡng `> 5` trong 5 phút là khởi điểm dev/staging, bắt buộc hiệu chuẩn theo baseline lưu lượng thực trên Production.
-  - **Đặc Tả Kỹ Thuật Enum `SafetyBlockCategory` & Bảng Ánh Xạ Chuẩn:** Thiết lập bảng ánh xạ chuẩn từ `promptFeedback.blockReason` và `candidates[0].finishReason` sang enum hữu hạn 5 giá trị (`SAFETY`, `HARM`, `RECITATION`, `POLICY`, `OTHER`); làm rõ nhãn `type` cố định gồm đúng 2 giá trị (`"prompt"` vs `"response"`), đưa vào checklist `[ ]` để triển khai code & unit test đồng bộ với hạ tầng Alert.
-  - **Đồng Bộ Đa Instance qua Redis `SET ... NX GET` & Cơ Chế TTL:** Chi tiết hóa lệnh `SET telemetry:24h:{sha256} {userId} EX 86400 NX GET` (Redis 7+ hoặc script Lua nguyên tử): khi khóa tồn tại, Redis không ghi đè và **không làm mới TTL**, đảm bảo cửa sổ 24h tính cố định từ lần xuất hiện đầu tiên, khớp chính xác hành vi `expireAfterWrite` của Caffeine.
+  - **Đồng Bộ Đa Instance qua Redis `SET ... NX GET` & Cơ Chế TTL:** Chi tiết hóa lệnh `SET telemetry:24h:{sha256} {userId} EX 86400 NX GET` (Redis 7+): khi khóa tồn tại, Redis không ghi đè và **không làm mới TTL**, đảm bảo cửa sổ 24h tính cố định từ lần xuất hiện đầu tiên, khớp chính xác hành vi `expireAfterWrite` của Caffeine.
   - **Dọn dẹp Regex Gợi ý ở Mục 3.5:** Bỏ `phat` và `tiep` khỏi regex gợi ý (chuyển thành `^dung (?:tat|chuyen)\b`), triệt tiêu mâu thuẫn với phân tích tính hai nghĩa của `"dung phat"`, `"dung tiep"`; ghi rõ đây là ví dụ ý niệm chưa kiểm chứng.
   - **Bổ sung Checklist Hiệu Chuẩn TTFT Reasoning Tier:** Thêm công việc đo phân phối p50/p95/p99 của `gemini-2.5-pro` trên Staging vào checklist `KE_HOACH_LOP_7_CACHE_ROUTER.md` để chốt ngưỡng Watchdog trước khi sản xuất.
   - **Chuẩn Hóa Nhận Định Collation MySQL:** Làm rõ nhận định `'USER' > 'AI'` là suy luận lý thuyết trên bảng mã chuẩn, giữ nguyên trạng thái `[ ]` cho bài test tích hợp Testcontainers MySQL để bảo chứng trên engine thực tế.
@@ -1103,4 +1157,4 @@ Google Gemini API trả về lý do chặn dưới dạng chuỗi tự do (free-
 ---
 
 > [!TIP]
-> **Tóm tắt hiện trạng:** Lớp 7 đã hoàn thành **75% Code-Complete, Telemetry Instrumented** với **109/109 Unit & Integration tests passed (100% Pass Rate)** cho các thành phần cốt lõi. Bản thiết kế kỹ thuật đã định hình giải pháp rõ ràng cho các thách thức kiến trúc: từ bẫy JPA Auditing, độ chính xác `DATETIME(6)`, sắp xếp đối ngẫu tie-breaker theo bảng chữ cái string, cấu trúc ngoại lệ Resilience4j, cách ly Watchdog trên Virtual Threads, phân định SO_TIMEOUT 15s trong điều kiện 0-byte starvation, đến hạ tầng Telemetry 2 cửa sổ đo lường ngầm. Các hạng mục vận hành thực tế (Testcontainers MySQL DB thật, đo phân phối TTFT Staging, cấu hình Prometheus Alerting và Dashboard Grafana) được duy trì trạng thái theo dõi minh bạch `[ ]` trong Kế hoạch để nghiệm thu trước khi đưa vào sản xuất.
+> **Tóm tắt hiện trạng:** Lớp 7 đã hoàn thành **75% Code-Complete, Telemetry Instrumented** với **109/109 Unit & Integration tests passed (100% Pass Rate)** cho toàn bộ mã nguồn nghiệp vụ cốt lõi (Fast-Path Two-Tier Regex, Model Router, Breaker, Telemetry in-memory). Các giải pháp kiến trúc đã được đặc tả chi tiết và nhất quán giữa các tài liệu. Ba hạng mục vận hành thực tế cốt lõi (Kiểm thử tích hợp Testcontainers trên MySQL thật, đo phân phối TTFT Staging cho Gemini Pro Thinking, cấu hình hạ tầng Prometheus Alerting & Grafana Dashboard) hiện đang mở ở trạng thái `[ ]` trong Kế hoạch và sẽ là căn cứ thực nghiệm quyết định để nghiệm thu **100% Production-Ready**.
