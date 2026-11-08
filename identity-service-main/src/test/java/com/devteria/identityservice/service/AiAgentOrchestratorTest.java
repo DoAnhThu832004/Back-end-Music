@@ -3,6 +3,7 @@ package com.devteria.identityservice.service;
 import com.devteria.identityservice.dto.response.PlayerActionDto;
 import com.devteria.identityservice.dto.response.PlaylistProposalDto;
 import com.devteria.identityservice.dto.response.SongCardDto;
+import com.devteria.identityservice.enums.MessageStatus;
 import com.devteria.identityservice.util.UserIntentClassifier;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.junit.jupiter.api.BeforeEach;
@@ -210,5 +211,128 @@ class AiAgentOrchestratorTest {
         assertFalse(UserIntentClassifier.hasDirectPlaybackIntent("Ý nghĩa bài hát là gì"));
         assertFalse(UserIntentClassifier.hasDirectPlaybackIntent(""));
         assertFalse(UserIntentClassifier.hasDirectPlaybackIntent(null));
+    }
+
+    @Test
+    @DisplayName("Bước 8: canSaveToSemanticCache chấp thuận câu trả lời thuần túy hợp lệ")
+    void testCanSaveToSemanticCache_ValidTurn_ReturnsTrue() {
+        AiAgentOrchestrator.AgentTurnResult result = AiAgentOrchestrator.AgentTurnResult.success(
+                "Hợp âm C Major gồm 3 nốt C, E, G.",
+                25,
+                Collections.emptyList(),
+                null,
+                null,
+                "gemini-2.5-pro",
+                false,
+                false,
+                false,
+                false
+        );
+
+        assertTrue(result.canSaveToSemanticCache(), "Câu trả lời nhạc lý chung phải đủ điều kiện lưu Semantic Cache");
+    }
+
+    @Test
+    @DisplayName("Bước 8: canSaveToSemanticCache từ chối khi sử dụng get_top_trending_songs (chống dữ liệu lỗi thời)")
+    void testCanSaveToSemanticCache_RejectsTrendingSongsTool() {
+        AiAgentOrchestrator.AgentTurnResult result = AiAgentOrchestrator.AgentTurnResult.success(
+                "Đây là top bài hát thịnh hành hôm nay...",
+                60,
+                List.of(SongCardDto.builder().id("trend-1").name("Trending 1").build()),
+                null,
+                null,
+                "gemini-3.5-flash-lite",
+                false,
+                true, // usedTrendingSongsTool = true
+                false,
+                false
+        );
+
+        assertFalse(result.canSaveToSemanticCache(), "Tuyệt đối không lưu kết quả có get_top_trending_songs vào Semantic Cache");
+    }
+
+    @Test
+    @DisplayName("Bước 8: canSaveToSemanticCache từ chối dữ liệu cá nhân hóa (usedPersonalTool)")
+    void testCanSaveToSemanticCache_RejectsPersonalTool() {
+        AiAgentOrchestrator.AgentTurnResult result = AiAgentOrchestrator.AgentTurnResult.success(
+                "Dựa trên sở thích của bạn, tôi gợi ý...",
+                50,
+                Collections.emptyList(),
+                null,
+                null,
+                "gemini-3.5-flash-lite",
+                true, // usedPersonalTool = true
+                false,
+                false,
+                false
+        );
+
+        assertFalse(result.canSaveToSemanticCache(), "Không được lưu gợi ý mang tính cá nhân hóa vào Semantic Cache");
+    }
+
+    @Test
+    @DisplayName("Bước 8: canSaveToSemanticCache từ chối khi có side-effects (PlayerAction hoặc PlaylistProposal)")
+    void testCanSaveToSemanticCache_RejectsSideEffects() {
+        PlayerActionDto action = PlayerActionDto.builder().action("PLAY").song(SongCardDto.builder().id("s-1").build()).build();
+        AiAgentOrchestrator.AgentTurnResult resultWithAction = AiAgentOrchestrator.AgentTurnResult.success(
+                "Đang phát bài hát cho bạn",
+                20,
+                Collections.emptyList(),
+                action,
+                null,
+                "gemini-3.5-flash-lite",
+                false,
+                false,
+                false,
+                false
+        );
+        assertFalse(resultWithAction.canSaveToSemanticCache(), "Không lưu phản hồi chứa lệnh điều khiển phát nhạc");
+
+        PlaylistProposalDto proposal = PlaylistProposalDto.builder().suggestedTitle("My List").songs(Collections.emptyList()).build();
+        AiAgentOrchestrator.AgentTurnResult resultWithProposal = AiAgentOrchestrator.AgentTurnResult.success(
+                "Đã tạo danh sách",
+                20,
+                Collections.emptyList(),
+                null,
+                proposal,
+                "gemini-3.5-flash-lite",
+                false,
+                false,
+                false,
+                false
+        );
+        assertFalse(resultWithProposal.canSaveToSemanticCache(), "Không lưu phản hồi chứa đề xuất tạo playlist");
+    }
+
+    @Test
+    @DisplayName("Bước 8: canSaveToSemanticCache từ chối khi bị ngắt mạch (degradedByBreaker) hoặc fallback")
+    void testCanSaveToSemanticCache_RejectsDegradedOrFallback() {
+        AiAgentOrchestrator.AgentTurnResult resultFallback = AiAgentOrchestrator.AgentTurnResult.success(
+                "Nội dung fallback",
+                30,
+                Collections.emptyList(),
+                null,
+                null,
+                "gemini-3.5-flash-lite",
+                false,
+                false,
+                true, // wasFallbackTriggered = true
+                false
+        );
+        assertFalse(resultFallback.canSaveToSemanticCache(), "Không lưu câu trả lời sinh ra từ fallback do lỗi");
+
+        AiAgentOrchestrator.AgentTurnResult resultDegraded = AiAgentOrchestrator.AgentTurnResult.success(
+                "Nội dung hạ cấp do ngắt mạch",
+                30,
+                Collections.emptyList(),
+                null,
+                null,
+                "gemini-3.5-flash-lite",
+                false,
+                false,
+                false,
+                true // degradedByBreaker = true
+        );
+        assertFalse(resultDegraded.canSaveToSemanticCache(), "Không lưu câu trả lời bị ép hạ cấp do Circuit Breaker đang OPEN");
     }
 }

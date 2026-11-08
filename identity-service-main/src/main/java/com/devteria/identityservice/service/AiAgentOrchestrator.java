@@ -73,6 +73,7 @@ public class AiAgentOrchestrator {
             PlaylistProposalDto playlistProposal,
             String errorMessage,
             boolean usedPersonalTool,
+            boolean usedTrendingSongsTool,
             boolean wasFallbackTriggered,
             boolean degradedByBreaker,
             String actualModelUsed
@@ -86,33 +87,76 @@ public class AiAgentOrchestrator {
                 PlaylistProposalDto playlistProposal,
                 String errorMessage
         ) {
-            this(fullText, totalTokens, status, suggestedSongs, playerAction, playlistProposal, errorMessage, false, false, false, "gemini-3.5-flash-lite");
+            this(fullText, totalTokens, status, suggestedSongs, playerAction, playlistProposal, errorMessage, false, false, false, false, "gemini-3.5-flash-lite");
+        }
+
+        public AgentTurnResult(
+                String fullText,
+                int totalTokens,
+                MessageStatus status,
+                List<SongCardDto> suggestedSongs,
+                PlayerActionDto playerAction,
+                PlaylistProposalDto playlistProposal,
+                String errorMessage,
+                boolean usedPersonalTool,
+                boolean wasFallbackTriggered,
+                boolean degradedByBreaker,
+                String actualModelUsed
+        ) {
+            this(fullText, totalTokens, status, suggestedSongs, playerAction, playlistProposal, errorMessage, usedPersonalTool, false, wasFallbackTriggered, degradedByBreaker, actualModelUsed);
         }
 
         public static AgentTurnResult forCacheHit(String text, List<SongCardDto> songs) {
             return new AgentTurnResult(
                     text, 0, MessageStatus.COMPLETE, songs != null ? songs : Collections.emptyList(),
-                    null, null, null, false, false, false, "semantic-cache"
+                    null, null, null, false, false, false, false, "semantic-cache"
             );
         }
 
         public static AgentTurnResult failed(String errorCode) {
-            return new AgentTurnResult("", 0, MessageStatus.FAILED, Collections.emptyList(), null, null, errorCode, false, false, false, "none");
+            return new AgentTurnResult("", 0, MessageStatus.FAILED, Collections.emptyList(), null, null, errorCode, false, false, false, false, "none");
         }
 
         public static AgentTurnResult interrupted(String fullText, int totalTokens, String errorMessage) {
             MessageStatus status = (fullText != null && !fullText.isBlank()) ? MessageStatus.INTERRUPTED : MessageStatus.FAILED;
-            return new AgentTurnResult(fullText != null ? fullText : "", totalTokens, status, Collections.emptyList(), null, null, errorMessage, false, false, false, "unknown");
+            return new AgentTurnResult(fullText != null ? fullText : "", totalTokens, status, Collections.emptyList(), null, null, errorMessage, false, false, false, false, "unknown");
+        }
+
+        public static AgentTurnResult success(
+                String fullText, int totalTokens, List<SongCardDto> songs,
+                PlayerActionDto playerAction, PlaylistProposalDto proposal,
+                String modelUsed, boolean usedPersonalTool, boolean usedTrendingSongsTool,
+                boolean wasFallbackTriggered, boolean degradedByBreaker) {
+            return new AgentTurnResult(
+                    fullText, totalTokens, MessageStatus.COMPLETE, songs, playerAction, proposal, null,
+                    usedPersonalTool, usedTrendingSongsTool, wasFallbackTriggered, degradedByBreaker, modelUsed
+            );
         }
 
         public static AgentTurnResult success(
                 String fullText, int totalTokens, List<SongCardDto> songs,
                 PlayerActionDto playerAction, PlaylistProposalDto proposal,
                 String modelUsed, boolean usedPersonalTool, boolean wasFallbackTriggered, boolean degradedByBreaker) {
-            return new AgentTurnResult(
-                    fullText, totalTokens, MessageStatus.COMPLETE, songs, playerAction, proposal, null,
-                    usedPersonalTool, wasFallbackTriggered, degradedByBreaker, modelUsed
-            );
+            return success(fullText, totalTokens, songs, playerAction, proposal, modelUsed, usedPersonalTool, false, wasFallbackTriggered, degradedByBreaker);
+        }
+
+        /**
+         * Tiêu chuẩn Bước 8: Kiểm định điều kiện an toàn để lưu vào Semantic Cache (W-TinyLFU)
+         * - Chỉ lưu khi lượt hội thoại hoàn tất thành công (COMPLETE)
+         * - KHÔNG chứa thông tin cá nhân hóa (!usedPersonalTool)
+         * - KHÔNG chứa thông tin biến động nhanh (!usedTrendingSongsTool)
+         * - KHÔNG bị kích hoạt fallback (!wasFallbackTriggered)
+         * - KHÔNG bị ngắt mạch / hạ cấp (!degradedByBreaker)
+         * - KHÔNG chứa side-effect actions (playerAction == null && playlistProposal == null)
+         */
+        public boolean canSaveToSemanticCache() {
+            return status == MessageStatus.COMPLETE
+                    && !usedPersonalTool
+                    && !usedTrendingSongsTool
+                    && !wasFallbackTriggered
+                    && !degradedByBreaker
+                    && playerAction == null
+                    && playlistProposal == null;
         }
     }
 
@@ -259,6 +303,7 @@ public class AiAgentOrchestrator {
             boolean degradedByBreaker = routingDecision.degradedByBreaker();
             boolean wasFallbackTriggered = false;
             boolean usedPersonalTool = false;
+            boolean usedTrendingSongsTool = false;
             boolean hasSideEffectToolExecuted = false;
             int executedToolsCount = 0;
 
@@ -469,6 +514,10 @@ public class AiAgentOrchestrator {
                                 usedPersonalTool = true;
                             }
 
+                            if (GeminiToolDeclarationFactory.TOOL_GET_TOP_TRENDING.equals(toolName)) {
+                                usedTrendingSongsTool = true;
+                            }
+
                             // Bắn sự kiện tool_status xuống client
                             sendToolStatusEvent(emitter, toolName);
 
@@ -543,6 +592,7 @@ public class AiAgentOrchestrator {
                                 resolvedPlaylistProposal,
                                 currentTargetModel,
                                 usedPersonalTool,
+                                usedTrendingSongsTool,
                                 wasFallbackTriggered,
                                 degradedByBreaker
                         ));
@@ -579,6 +629,7 @@ public class AiAgentOrchestrator {
                             resolvedPlaylistProposal,
                             e.getMessage(),
                             usedPersonalTool,
+                            usedTrendingSongsTool,
                             wasFallbackTriggered,
                             degradedByBreaker,
                             currentTargetModel

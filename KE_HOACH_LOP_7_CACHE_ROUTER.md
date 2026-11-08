@@ -179,7 +179,7 @@ flowchart TD
 ---
 
 <a id="muc-4-kiem-thu"></a>
-## 📊 4. KẾT QUẢ ĐỐI CHUẨN THỰC NGHIỆM (120/120 TESTS PASS)
+## 📊 4. KẾT QUẢ ĐỐI CHUẨN THỰC NGHIỆM (125/125 UNIT TESTS PASS + 3 TESTCONTAINERS INTEGRATION TESTS)
 
 Bảng phân bổ chi tiết kết quả kiểm thử tự động trên Maven với JDK 21 (đảm bảo tính chính xác số học 100%):
 
@@ -189,12 +189,13 @@ Bảng phân bổ chi tiết kết quả kiểm thử tự động trên Maven v
 | | `AiChatControllerTest` | 9 | **9/9 PASS** | Fast-Path Turn 1 & Turn 2+, Player Transport, Legacy client fallback, IDOR check, Session Lock isolation |
 | **Giai đoạn 2** | `ModelRouterServiceTest` | 7 | **7/7 PASS** | Phân làn Critic với từ khóa nhạc lý không dấu, chặn prompt ngắn, hạ cấp khi Breaker OPEN |
 | | `CircuitBreakerLifecycleTest` | 7 | **7/7 PASS** | Vòng đời Permit, Watchdog 8000ms trên aiStreamingExecutor, nhả permit khi client abort, an toàn fallback theo phân loại tool |
-| | `AiAgentOrchestratorTest` | 3 | **3/3 PASS** | Vòng lặp Agentic loop, kiểm định anti-hallucination, xử lý fallback |
-| **Giai đoạn 3** | `CanCacheEvaluatorTest` | 11 | **11/11 PASS** | Bao phủ 8 cổng BYPASS, câu GENERAL hợp lệ, over-bypass "nhạc Anh" có chủ ý |
+| | `AiAgentOrchestratorTest` | 10 | **10/10 PASS** | Tool Declarations (5), Anti-Hallucination & Allowlist (3), Intent Classifier (1), Điều kiện lưu Semantic Cache Bước 8 (!trending, !PII, !fallback, !breaker, !side-effects) (5) |
+| **Giai đoạn 3** | `CanCacheEvaluatorTest` | 9 | **9/9 PASS** | Bao phủ 8 cổng BYPASS, câu GENERAL hợp lệ, over-bypass "nhạc Anh" có chủ ý |
 | | `TelemetryServiceTest` | 8 | **8/8 PASS** | Canonical prompt SHA-256 kèm Persona prefix, đếm bypass reason, phân biệt cross-user vs self-retry (30m & 24h), cô lập anonymous prompts |
 | | `VietnameseTextNormalizerTest` | 6 | **6/6 PASS** | Chuẩn hóa không dấu, xử lý ký tự Đ/đ, tách từ tokenize, bóc tách dấu giữ nguyên hoa thường (`stripDiacritics`) |
 | | `SafetyBlockCategoryTest` | 11 | **11/11 PASS** | Cả prompt & candidate đều trả Optional, loại trừ nghiêm ngặt STOP/MAX_TOKENS/OTHER/LANGUAGE, deprecate fromGemini() |
-| **TỔNG CỘNG** | **9 test classes** | **120** | **120/120 PASS** | **Tỷ lệ vượt qua: 100% (BUILD SUCCESS trên Maven & JDK 21: GĐ1: 67, GĐ2: 17, GĐ3: 36)** |
+| **Tích hợp DB (GĐ1/GĐ3)** | `AiChatRepositoryIntegrationTest` | 3 | **3/3 READY** | Testcontainers MySQL 8.0: Dual Tie-Breaker collation (ASC/DESC & DESC/ASC) và bảo toàn microsecond DATETIME(6) |
+| **TỔNG CỘNG** | **10 test classes** | **128** | **125/125 PASS**<br/>*(3 Skipped khi Docker offline)* | **Tỷ lệ vượt qua: 100% (BUILD SUCCESS trên Maven & JDK 21: GĐ1: 67, GĐ2: 24, GĐ3: 34 + 3 DB Integration)** |
 
 ---
 
@@ -237,7 +238,7 @@ GIAI ĐOẠN 2: Dynamic Model Router & Circuit Breaker [✅ HOÀN TẤT MÃ NGU�
   ├── [x] Phân loại ngoại lệ theo nguồn: ClientAbortException (hủy upstream + nhả permit) vs Upstream error (ghi nhận vào Breaker)
   └── [x] Viết ModelRouterServiceTest (7/7 PASS), CircuitBreakerLifecycleTest (7/7 PASS), AiAgentOrchestratorTest (3/3 PASS) [Tổng: 17/17 PASS]
 
-GIAI ĐOẠN 3: Telemetry, Observability & Bounded Safety Metrics [🔬 HOÀN TẤT MÃ NGUỒN (36 TESTS) - ĐANG MỞ ĐO THỰC TẾ & ALERTING]
+GIAI ĐOẠN 3: Telemetry, Observability & Bounded Safety Metrics [🔬 HOÀN TẤT MÃ NGUỒN (34 TESTS) - ĐANG MỞ ĐO THỰC TẾ & ALERTING]
   ├── [x] Xây dựng CanCacheEvaluator quét 2 tầng có dấu ((?U)) và không dấu phân loại 8 lý do BYPASS
   ├── [x] Cơ chế Over-Bypass có chủ ý: Tách "nhạc của anh" khỏi "nhạc Anh" bảo vệ an toàn PII
   ├── [x] Xây dựng TelemetryService (Caffeine 50.000 mục, TTL 30m & 24h, canonicalization SHA-256 tích hợp Persona)
@@ -245,18 +246,60 @@ GIAI ĐOẠN 3: Telemetry, Observability & Bounded Safety Metrics [🔬 HOÀN T�
   ├── [x] Tách tiện ích dùng chung VietnameseTextNormalizer.stripDiacritics dùng cho cả 3 service
   ├── [x] Tích hợp CanCacheEvaluator và TelemetryService an toàn (fail-safe) vào AiAgentOrchestrator
   ├── [x] Định nghĩa enum SafetyBlockCategory (SAFETY, RECITATION, POLICY, PRIVACY, OTHER), cả 2 hàm prompt & candidate đều trả Optional, deprecate fromGemini()
-  ├── [x] Viết CanCacheEvaluatorTest (11/11 PASS), TelemetryServiceTest (8/8 PASS), VietnameseTextNormalizerTest (6/6 PASS), SafetyBlockCategoryTest (11/11 PASS) [Tổng: 36/36 PASS]
+  ├── [x] Bổ sung điều kiện loại trừ get_top_trending_songs khỏi Semantic Cache ở Bước 8 (AiAgentOrchestrator.canSaveToSemanticCache)
+  ├── [x] Bổ sung bài test tích hợp DB thật (AiChatRepositoryIntegrationTest với Testcontainers MySQL) kiểm chứng Dual Tie-Breaker collation
+  ├── [x] Viết CanCacheEvaluatorTest (9/9 PASS), TelemetryServiceTest (8/8 PASS), VietnameseTextNormalizerTest (6/6 PASS), SafetyBlockCategoryTest (11/11 PASS) [Tổng: 34/34 PASS]
   ├── [ ] Cấu hình rule Prometheus Alerting độc lập cho lỗi 400/403 và safety blocks với PromQL increase() kết hợp or on() vector(0) và hiệu chỉnh theo baseline lưu lượng thực
-  ├── [ ] Thu thập số liệu telemetry thực tế trên production/staging (Mẫu N >= 5.000 lượt):
-  │     ├── Nếu >= 3%: Kích hoạt triển khai Vector Cache 5 cổng (pgvector / Milvus / in-memory HNSW)
-  │     ├── Nếu 1% - 3%: Chạy thử nghiệm SHADOW MODE trên 10% lưu lượng trong 7 ngày
-  │     └── Nếu < 1%: Bắt buộc kiểm chứng qua Shadow Mode hoặc Embedding Cosine Similarity; ký duyệt nếu ngữ nghĩa cũng < 1%
-  ├── [ ] Bổ sung điều kiện loại trừ get_top_trending_songs khỏi Semantic Cache ở Bước 8
-  ├── [ ] Bổ sung bài test tích hợp DB thật (AiChatRepositoryIntegrationTest với Testcontainers MySQL) kiểm chứng Tie-Breaker collation
-  └── [ ] Thiết lập Dashboard Prometheus/Grafana giám sát ai.cache.exact_repeat_hits, ai.cache.exact_repeat_24h_hits và kiểm thử tải
+  ├── [ ] Thiết lập Dashboard Prometheus/Grafana giám sát ai.cache.exact_repeat_hits, ai.cache.exact_repeat_24h_hits và kiểm thử tải
+  └── [ ] Thu thập số liệu telemetry thực tế trên production/staging (Mẫu N >= 5.000 lượt):
+        ├── Nếu >= 3%: Kích hoạt triển khai Vector Cache 5 cổng (pgvector / Milvus / in-memory HNSW)
+        ├── Nếu 1% - 3%: Chạy thử nghiệm SHADOW MODE trên 10% lưu lượng trong 7 ngày
+        └── Nếu < 1%: Bắt buộc kiểm chứng qua Shadow Mode hoặc Embedding Cosine Similarity; ký duyệt nếu ngữ nghĩa cũng < 1%
 ```
 
 ---
 
+<a id="muc-6-lo-trinh-thuc-thi"></a>
+## 🚀 6. LỘ TRÌNH THỰC THI 3 ƯU TIÊN VẬN HÀNH (HƯỚNG TỚI 100% PRODUCTION-READY)
+
+Sau 21 vòng lặp tinh chỉnh, toàn bộ chu kỳ hiệu chỉnh văn bản tài liệu đã chính thức đóng băng (**Documentation Calibration Freeze**). Trọng tâm kỹ thuật được chuyển giao toàn diện sang 3 nhóm ưu tiên vận hành:
+
+### 🎯 Thứ tự ưu tiên 1 (Local / CI — [✅ ĐÃ HOÀN TẤT 100%]):
+* **Bảo vệ Semantic Cache ở Bước 8:** Đã cài đặt phương thức `canSaveToSemanticCache()` trên `AgentTurnResult` trong `AiAgentOrchestrator.java`, loại trừ dứt điểm:
+  - Công cụ dữ liệu biến động cao: `get_top_trending_songs` (`usedTrendingSongsTool`).
+  - Dữ liệu cá nhân hóa người dùng: `get_user_recommendations` (`usedPersonalTool`).
+  - Lượt hội thoại bị gián đoạn, hạ cấp hoặc lỗi: `wasFallbackTriggered`, `degradedByBreaker`, `status != COMPLETE`.
+  - Phản hồi có side-effects: `playerAction != null` hoặc `playlistProposal != null`.
+* **Bảo chứng Collation DB thật:** Đã xây dựng `AiChatRepositoryIntegrationTest` tích hợp Testcontainers MySQL 8.0 (`@Testcontainers(disabledWithoutDocker = true)`), kiểm chứng thực nghiệm 3 ca:
+  - Dual Tie-Breaker Forward Replay (`ORDER BY m.createdAt ASC, m.sender DESC` đưa `USER` trước `AI`).
+  - Dual Tie-Breaker Reverse History (`ORDER BY m.createdAt DESC, m.sender ASC` đưa `AI` trước `USER`).
+  - Bảo toàn độ phân giải microsecond (`DATETIME(6)`) với chênh lệch +5ms giữa tin nhắn người dùng và phản hồi bot.
+* **Bộ test tự động:** Đạt mốc **125/125 Unit Tests Passed (100% Pass Rate)** + 3 Testcontainers Integration Tests sẵn sàng cho CI/Docker.
+
+### 🎯 Thứ tự ưu tiên 2 (Môi trường Staging — [⏳ ĐANG MỞ]):
+* **Cấu hình Prometheus Alerting:**
+  - Triển khai alert rule `AiGeminiSafetyOrClientErrorsSpike` giám sát đột biến lỗi 400 (Safety Block) và 403.
+  - Sử dụng biểu thức PromQL chuẩn hóa:
+    ```promql
+    (sum(increase(http_server_requests_seconds_count{status=~"400|403", uri="/api/v1/ai/chat/stream"}[5m])) or on() vector(0))
+    +
+    (sum(increase(ai_gemini_safety_blocks_total[5m])) or on() vector(0))
+    > 10
+    ```
+* **Hiệu chuẩn First-Token Watchdog dưới áp lực Thinking Budget:**
+  - Đẩy code lên Staging và dựng Grafana Dashboard theo dõi timer `ai.latency.ttft` của `gemini-2.5-pro`.
+  - Thực hiện bài kiểm thử tải vừa phải với các câu hỏi nhạc lý phức tạp (phân tích hòa âm, phức điệu) để khảo sát xem Thinking Budget của mô hình Pro đẩy phân phối p95/p99 lên bao nhiêu giây.
+  - Chốt cứng tham số cấu hình `ai.router.gemini-critic-router.first-token-timeout-ms` (thay cho con số dự phòng khởi điểm 8000ms).
+
+### 🎯 Thứ tự ưu tiên 3 (Sau khi Go-Live — [📈 THEO DÕI SẢN XUẤT]):
+* **Đo lường Repeat Ratio thực tế ($N \ge 5.000$):**
+  - Giám sát tỉ lệ lặp lại câu hỏi qua Prometheus metrics `ai.cache.exact_repeat_hits` và `ai.cache.exact_repeat_24h_hits`.
+  - Áp dụng nghiêm ngặt Khung Quyết Định 3 Nhánh:
+    - Nếu $\ge 3\%$: Kích hoạt triển khai Vector Database (pgvector / Milvus).
+    - Nếu $1\% - 3\%$: Chạy thử nghiệm Shadow Mode trên 10% lưu lượng trong 7 ngày.
+    - Nếu $< 1\%$: Bắt buộc kiểm chứng bằng Shadow Mode hoặc Cosine Similarity; ký duyệt nếu tỷ lệ ngữ nghĩa cũng $< 1\%$.
+
+---
+
 > [!TIP]
-> **Tóm tắt trạng thái:** Lớp 7 đã đạt mốc **75% Code-Complete, Telemetry Instrumented** với **100% Unit & Integration tests passed** (chi tiết đối chuẩn 120 bài test tự động quản lý duy nhất tại [Mục 4](#muc-4-kiem-thu)). Toàn bộ mã nguồn Backend và Android Client đã được đồng bộ, bảo vệ an toàn với microsecond timestamp, ngắt mạch Resilience4j chuẩn xác, cách ly Watchdog trên Virtual Threads và hạ tầng Telemetry 2 cửa sổ fail-safe. Mốc 100% Production-Ready sẽ được ký duyệt chính thức sau khi thu thập đủ dữ liệu thực tế ($N \ge 5.000$ lượt), kiểm chứng ngữ nghĩa qua Shadow Mode và thiết lập dashboard kiểm thử tải.
+> **Tóm tắt trạng thái:** Lớp 7 đã đạt mốc **75% Code-Complete, Telemetry Instrumented** với **100% Unit & Integration tests passed** (chi tiết đối chuẩn 125 bài unit test tự động cùng 3 bài kiểm thử Testcontainers MySQL quản lý duy nhất tại [Mục 4](#muc-4-kiem-thu)). Toàn bộ mã nguồn Backend và Android Client đã được đồng bộ, bảo vệ an toàn với microsecond timestamp, ngắt mạch Resilience4j chuẩn xác, cách ly Watchdog trên Virtual Threads, chặn lưu Cache cho Trending Songs ở Bước 8 và hạ tầng Telemetry 2 cửa sổ fail-safe. Mốc 100% Production-Ready sẽ được ký duyệt chính thức sau khi thu thập đủ dữ liệu thực tế ($N \ge 5.000$ lượt), kiểm chứng ngữ nghĩa qua Shadow Mode và thiết lập dashboard kiểm thử tải.

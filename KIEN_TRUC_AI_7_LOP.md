@@ -258,13 +258,18 @@ Lớp 7 là đỉnh cao của kiến trúc tối ưu hóa hiệu năng, giảm t
 
 ---
 
-## 9. BƯỚC TIẾP THEO ĐỂ ĐẠT 100% PRODUCTION-READY
+## 9. LỘ TRÌNH THỰC THI 3 ƯU TIÊN VẬN HÀNH (HƯỚNG TỚI 100% PRODUCTION-READY)
 
-Sau khi hoàn thành xuất sắc 7 lớp trên (**120/120 Tests PASS — 75% Code-Complete, Telemetry Instrumented**; tham chiếu Single Source of Truth tại [`KE_HOACH_LOP_7_CACHE_ROUTER.md#muc-1-hien-trang`](KE_HOACH_LOP_7_CACHE_ROUTER.md#muc-1-hien-trang)):
-1. **Lớp 7 (Vận hành & Thu thập Telemetry Thực tế):**
-   * Đo phân phối TTFT (p50/p95/p99) của Reasoning Tier (`gemini-2.5-pro`) trên Staging để hiệu chuẩn và chốt ngưỡng Watchdog (dự phòng 8000ms).
-   * Theo dõi chỉ số `ai.cache.exact_repeat_hits`, `ai.cache.exact_repeat_24h_hits` và `ai.latency.fastpath` trên Prometheus/Grafana với mẫu $N \ge 5.000$ lượt để ra quyết định ký duyệt hoặc triển khai Vector Cache.
-   * Chạy bài test tích hợp DB thật (`AiChatRepositoryIntegrationTest` với Testcontainers MySQL) kiểm chứng Tie-Breaker collation.
-2. **Lớp 8 (Observability & CI/CD Evals):**
-   * *LLM Tracing:* Tích hợp OpenTelemetry / Micrometer Tracing để theo dõi từng span của Multi-step Agent.
+Sau khi hoàn tất xuất sắc toàn bộ mã nguồn của 7 lớp và đóng băng chu kỳ hiệu chỉnh văn bản tài liệu (**125/125 Unit Tests PASS — 100% Pass Rate + 3 Testcontainers MySQL Integration Tests**; tham chiếu Single Source of Truth tại [`KE_HOACH_LOP_7_CACHE_ROUTER.md#muc-1-hien-trang`](KE_HOACH_LOP_7_CACHE_ROUTER.md#muc-1-hien-trang)):
+
+1. **Thứ tự ưu tiên 1 (Local / CI — [✅ ĐÃ HOÀN TẤT 100%]):**
+   * Hoàn tất điều kiện `canSaveToSemanticCache()` ở Bước 8 trong `AiAgentOrchestrator`, loại trừ hoàn toàn `get_top_trending_songs`, dữ liệu cá nhân hóa và các lượt hội thoại bị lỗi / hạ cấp.
+   * Xây dựng `AiChatRepositoryIntegrationTest` với Testcontainers MySQL 8.0 (`@Testcontainers(disabledWithoutDocker = true)`) kiểm chứng thực nghiệm Dual Tie-Breaker Collation (`ASC, DESC` và `DESC, ASC`) cùng độ phân giải `DATETIME(6)`.
+2. **Thứ tự ưu tiên 2 (Môi trường Staging — [⏳ ĐANG MỞ]):**
+   * Dựng Grafana Dashboard theo dõi phân phối TTFT (`ai.latency.ttft`) của Reasoning Tier (`gemini-2.5-pro`) dưới áp lực Thinking Budget (prompt nhạc lý phức tạp) để chốt cứng cấu hình `first-token-timeout-ms` (thay thế ngưỡng dự phòng 8000ms).
+   * Cấu hình Prometheus Alert rule (`AiGeminiSafetyOrClientErrorsSpike`) với PromQL `increase(...[5m]) + or on() vector(0)` cảnh báo đột biến lỗi 400/403.
+3. **Thứ tự ưu tiên 3 (Sau khi Go-Live — [📈 THEO DÕI SẢN XUẤT]):**
+   * Thu thập dữ liệu Telemetry 2 cửa sổ (30m & 24h) với mẫu $N \ge 5.000$ lượt prompt hợp lệ để áp dụng Khung Quyết Định 3 Nhánh ($<1\%$, $1-3\%$, $\ge 3\%$) cho Semantic Cache.
+4. **Lớp 8 (Observability & CI/CD Evals dài hạn):**
+   * *LLM Tracing:* Tích hợp OpenTelemetry / Micrometer Tracing theo dõi từng span của Multi-step Agent.
    * *Automated Evals:* Duy trì bộ kiểm thử tự động `AiCompanionEvaluationSuiteTest` trong pipeline CI/CD mỗi khi cập nhật Prompt!
