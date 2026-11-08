@@ -8,32 +8,32 @@ import org.junit.jupiter.params.provider.ValueSource;
 import java.util.Optional;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class SafetyBlockCategoryTest {
 
     @Test
-    @DisplayName("Prompt Block: SAFETY ánh xạ đúng category SAFETY")
+    @DisplayName("Prompt Block: SAFETY ánh xạ đúng category SAFETY dạng Optional")
     void testFromPromptBlockReason_Safety() {
-        assertEquals(SafetyBlockCategory.SAFETY, SafetyBlockCategory.fromPromptBlockReason("SAFETY"));
-        assertEquals(SafetyBlockCategory.SAFETY, SafetyBlockCategory.fromPromptBlockReason("safety"));
+        assertEquals(Optional.of(SafetyBlockCategory.SAFETY), SafetyBlockCategory.fromPromptBlockReason("SAFETY"));
+        assertEquals(Optional.of(SafetyBlockCategory.SAFETY), SafetyBlockCategory.fromPromptBlockReason("safety"));
     }
 
     @Test
     @DisplayName("Prompt Block: BLOCKLIST và PROHIBITED_CONTENT ánh xạ POLICY")
     void testFromPromptBlockReason_Policy() {
-        assertEquals(SafetyBlockCategory.POLICY, SafetyBlockCategory.fromPromptBlockReason("BLOCKLIST"));
-        assertEquals(SafetyBlockCategory.POLICY, SafetyBlockCategory.fromPromptBlockReason("PROHIBITED_CONTENT"));
+        assertEquals(Optional.of(SafetyBlockCategory.POLICY), SafetyBlockCategory.fromPromptBlockReason("BLOCKLIST"));
+        assertEquals(Optional.of(SafetyBlockCategory.POLICY), SafetyBlockCategory.fromPromptBlockReason("PROHIBITED_CONTENT"));
     }
 
     @Test
-    @DisplayName("Prompt Block: BLOCK_REASON_UNSPECIFIED, OTHER hoặc giá trị mới rơi vào OTHER")
-    void testFromPromptBlockReason_OtherAndDefault() {
-        assertEquals(SafetyBlockCategory.OTHER, SafetyBlockCategory.fromPromptBlockReason("BLOCK_REASON_UNSPECIFIED"));
-        assertEquals(SafetyBlockCategory.OTHER, SafetyBlockCategory.fromPromptBlockReason("OTHER"));
-        assertEquals(SafetyBlockCategory.OTHER, SafetyBlockCategory.fromPromptBlockReason("NEW_UNKNOWN_REASON"));
-        assertEquals(SafetyBlockCategory.OTHER, SafetyBlockCategory.fromPromptBlockReason(null));
-        assertEquals(SafetyBlockCategory.OTHER, SafetyBlockCategory.fromPromptBlockReason("   "));
+    @DisplayName("Prompt Block: Giá trị không xác định rơi vào default OTHER; null hoặc blank trả về Optional.empty()")
+    void testFromPromptBlockReason_OtherAndNull() {
+        assertEquals(Optional.of(SafetyBlockCategory.OTHER), SafetyBlockCategory.fromPromptBlockReason("BLOCK_REASON_UNSPECIFIED"));
+        assertEquals(Optional.of(SafetyBlockCategory.OTHER), SafetyBlockCategory.fromPromptBlockReason("OTHER"));
+        assertEquals(Optional.of(SafetyBlockCategory.OTHER), SafetyBlockCategory.fromPromptBlockReason("NEW_UNKNOWN_REASON"));
+        assertEquals(Optional.empty(), SafetyBlockCategory.fromPromptBlockReason(null));
+        assertEquals(Optional.empty(), SafetyBlockCategory.fromPromptBlockReason("   "));
+        assertEquals(Optional.empty(), SafetyBlockCategory.fromPromptBlockReason(""));
     }
 
     @Test
@@ -56,8 +56,9 @@ class SafetyBlockCategoryTest {
     }
 
     @Test
-    @DisplayName("fromGemini: Tổng quát tương thích ngược và fallback an toàn")
-    void testFromGemini_General() {
+    @DisplayName("fromGemini (Deprecated): Tổng quát tương thích ngược có cảnh báo")
+    @SuppressWarnings("deprecation")
+    void testFromGemini_Deprecated() {
         assertEquals(SafetyBlockCategory.SAFETY, SafetyBlockCategory.fromGemini("SAFETY"));
         assertEquals(SafetyBlockCategory.RECITATION, SafetyBlockCategory.fromGemini("RECITATION"));
         assertEquals(SafetyBlockCategory.POLICY, SafetyBlockCategory.fromGemini("BLOCKLIST"));

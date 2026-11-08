@@ -7,7 +7,7 @@ import java.util.Optional;
  * Phân loại các lý do chặn an toàn và chính sách của Google Gemini API
  * phục vụ việc giám sát Counter ai.gemini.safety.blocks với Bounded Cardinality.
  *
- * Đối chiếu theo tài liệu chính thức Google Gemini API v1beta (tháng 11/2024):
+ * Đối chiếu theo tài liệu chính thức Google Gemini API (Kiểm chứng thực tế Tháng 11/2026 - v1beta & gemini-3.5):
  * - BlockReason (Prompt): https://ai.google.dev/api/rest/v1beta/GenerateContentResponse#blockreason
  * - FinishReason (Candidate): https://ai.google.dev/api/rest/v1beta/Candidate#finishreason
  */
@@ -20,17 +20,17 @@ public enum SafetyBlockCategory {
 
     /**
      * Ánh xạ từ promptFeedback.blockReason của Google Gemini API.
-     * Khi prompt bị Google chặn ngay từ đầu vào.
+     * Trả về Optional rỗng nếu không có blockReason (tức prompt không bị chặn đầu vào).
+     * Khi có chuỗi blockReason, ánh xạ về SAFETY, POLICY, hoặc OTHER (default).
      */
-    public static SafetyBlockCategory fromPromptBlockReason(String rawReason) {
+    public static Optional<SafetyBlockCategory> fromPromptBlockReason(String rawReason) {
         if (rawReason == null || rawReason.isBlank()) {
-            return OTHER;
+            return Optional.empty();
         }
         return switch (rawReason.trim().toUpperCase(Locale.ROOT)) {
-            case "SAFETY" -> SAFETY;
-            case "BLOCKLIST", "PROHIBITED_CONTENT" -> POLICY;
-            case "BLOCK_REASON_UNSPECIFIED", "OTHER" -> OTHER;
-            default -> OTHER; // Nhánh mặc định bắt buộc: hấp thụ toàn bộ giá trị không xác định hoặc Google bổ sung sau này
+            case "SAFETY" -> Optional.of(SAFETY);
+            case "BLOCKLIST", "PROHIBITED_CONTENT" -> Optional.of(POLICY);
+            default -> Optional.of(OTHER); // Hấp thụ an toàn BLOCK_REASON_UNSPECIFIED, OTHER và các lý do mới của Google
         };
     }
 
@@ -54,8 +54,11 @@ public enum SafetyBlockCategory {
     }
 
     /**
-     * Phương thức ánh xạ tổng quát tương thích ngược có fallback an toàn về OTHER.
+     * @deprecated Phương thức này không phân biệt giữa Prompt Block và Candidate FinishReason,
+     * có rủi ro ánh xạ nhầm các trạng thái bình thường (như STOP, MAX_TOKENS) thành OTHER và làm phình metric an toàn.
+     * Khuyến nghị dùng trực tiếp {@link #fromPromptBlockReason(String)} hoặc {@link #fromCandidateFinishReason(String)}.
      */
+    @Deprecated(since = "Layer-7-Rev20", forRemoval = true)
     public static SafetyBlockCategory fromGemini(String rawReason) {
         if (rawReason == null || rawReason.isBlank()) {
             return OTHER;
